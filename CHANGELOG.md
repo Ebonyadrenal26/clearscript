@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-04-25
+
+### Added — feed it your real transcripts
+
+- **5 new ingest adapters** for the formats real ASR tools produce:
+  - `.md` (`MdAdapter`) — auto-detect and strip AI-summary blocks. Recognizes English (`# Summary`, `## Action items`, `## TL;DR`) and Chinese (`## 本次访谈总结`, `## 会议要点`, `## 摘要`, `## 后续待办`). Strips tool provenance lines.
+  - `.docx` (`DocxAdapter`) — covers 飞书妙记 / 腾讯会议 / 通义听悟 / generic Word. Detects bold-leading-run speaker pattern. Strips inline timestamps `[00:14:33]`.
+  - `.srt` (`SrtAdapter`) — SubRip subtitles. Cue start/end seconds preserved on segments. Inline `Speaker: text` patterns extracted; HTML/ASS styling stripped.
+  - `.vtt` (`VttAdapter`) — WebVTT, custom parser. Honors `<v Speaker>...</v>` voice tags as canonical speaker labels.
+  - `.json` (`JsonAdapter`) — multi-shape: OpenAI Whisper / PLAUD / Google STT / Deepgram / generic flat list. Surfaces ASR-reported confidence when present.
+- **`POST /api/run-file`** — multipart upload endpoint for binary formats (`.docx`).
+- **`GET /api/supported-formats`** — extension list endpoint for the frontend.
+- **Web UI multi-format input** — drop zone now accepts `.txt / .md / .markdown / .docx / .srt / .vtt / .json`; binary uploads show a yellow "📎 file pending" badge and route through `/api/run-file`; text uploads still load into the textarea with format hint preserved.
+- `supported_extensions()` helper exposed from `clearscript.ingest`.
+
+### Changed
+
+- `RunRequest` gains a `format` field driving parser selection.
+- Ingest registry order: `md → docx → srt → vtt → json → txt`.
+- New runtime dependency: `python-multipart>=0.0.9`.
+- Bumped to `0.0.4`.
+
+### Tests
+
+- 22 new format tests across `test_ingest_md.py`, `test_ingest_docx.py`, `test_ingest_srt.py`, `test_ingest_vtt.py`, `test_ingest_json.py`.
+- Total: 66 tests, all passing. Lint clean.
+
+### Caught and fixed during testing
+
+- JSON: `s.get("start") or s.get("begin")` returned `None` when start was `0.0` (Python truthiness). Now uses explicit `is not None` checks.
+- Markdown: summary-block stripping treated `## Subsection` under `# Summary` as nested-skip; should end the skip. Now ends on any non-summary heading or first speaker line.
+
 ## [0.0.3] - 2026-04-25
 
 ### Added — the library is alive
