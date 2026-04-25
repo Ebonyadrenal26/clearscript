@@ -1,0 +1,178 @@
+"""Tests for project history storage."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from clearscript.storage import ProjectStore
+
+
+def test_create_and_save_run_persists_all_artifacts(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    project = store.create("Acme CTO interview")
+    project.save_run(
+        title="Acme CTO interview",
+        format_="txt",
+        provider="claude",
+        model="claude-opus-4-7",
+        input_text="Speaker 1: hi.\nSpeaker 2: hi.",
+        briefing="Speaker 1 = host; Speaker 2 = founder",
+        edited_markdown="Siqi：\n- hi.\n\nFounder：\n- hi.",
+        change_log=[
+            {"layer": "L1", "old": "Speaker 1", "new": "Siqi", "reason": "briefing"},
+        ],
+        suggestions=[
+            {"kind": "speaker", "canonical_name": "Founder", "display_label": "Founder："},
+        ],
+        input_tokens=100,
+        output_tokens=50,
+        duration_sec=12.3,
+    )
+
+    assert project.meta_path.is_file()
+    assert project.cleaned_md_path.is_file()
+    assert project.change_log_path.is_file()
+    assert project.suggestions_path.is_file()
+    assert project.briefing_path.is_file()
+
+    # raw input written under raw/input.txt
+    raw_files = list(project.raw_dir.glob("input.*"))
+    assert len(raw_files) == 1
+    assert raw_files[0].read_text(encoding="utf-8").startswith("Speaker 1:")
+
+
+def test_summary_extracts_meta(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    project = store.create("interview")
+    project.save_run(
+        title="My run",
+        format_="md",
+        provider="deepseek",
+        model="deepseek-chat",
+        input_text="Speaker 1: hi.",
+        edited_markdown="Output",
+        change_log=[],
+        suggestions=[],
+        input_tokens=50,
+        output_tokens=25,
+    )
+    summary = project.summary()
+    assert summary["title"] == "My run"
+    assert summary["format"] == "md"
+    assert summary["provider"] == "deepseek"
+    assert summary["model"] == "deepseek-chat"
+    assert summary["total_tokens"] == 75
+    assert summary["change_count"] == 0
+
+
+def test_detail_includes_all_payload(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    project = store.create("x")
+    project.save_run(
+        title="X",
+        format_="txt",
+        provider="claude",
+        model="opus",
+        input_text="raw input here",
+        briefing="some briefing",
+        edited_markdown="cleaned",
+        change_log=[{"layer": "L3", "old": "a", "new": "b"}],
+        suggestions=[{"kind": "term", "canonical": "Dify"}],
+        input_tokens=1,
+        output_tokens=2,
+    )
+    d = project.detail()
+    assert d["title"] == "X"
+    assert "raw input" in d["raw_input"]
+    assert "cleaned" in d["cleaned_markdown"]
+    assert d["briefing"] == "some briefing"
+    assert len(d["change_log"]) == 1
+    assert len(d["suggestions"]) == 1
+
+
+def test_list_summaries_sorted_newest_first(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    p1 = store.create("first")
+    p1.save_run(
+        title="first",
+        format_="txt",
+        provider="m",
+        model="m",
+        input_text="a",
+        edited_markdown="b",
+        change_log=[],
+        suggestions=[],
+        input_tokens=0,
+        output_tokens=0,
+    )
+    # Force second project to have a later timestamp by manipulating its meta directly.
+    p2 = store.create("second")
+    meta = p2.read_meta()
+    meta["created_at"] = "2099-12-31T23:59:59"
+    p2.write_meta(meta)
+    p2.cleaned_md_path.write_text("ok", encoding="utf-8")
+
+    summaries = store.list_summaries()
+    assert len(summaries) == 2
+    assert summaries[0]["slug"] == p2.slug
+
+
+def test_delete_removes_directory(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    project = store.create("doomed")
+    project.save_run(
+        title="x",
+        format_="txt",
+        provider="m",
+        model="m",
+        input_text="a",
+        edited_markdown="b",
+        change_log=[],
+        suggestions=[],
+        input_tokens=0,
+        output_tokens=0,
+    )
+    assert project.root.is_dir()
+    assert store.delete(project.slug)
+    assert not project.root.exists()
+    assert not store.exists(project.slug)
+
+
+def test_delete_nonexistent_returns_false(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    assert not store.delete("does-not-exist")
+
+
+def test_slug_includes_seconds_so_two_quick_runs_differ(tmp_path: Path) -> None:
+    import time
+
+    store = ProjectStore(tmp_path)
+    s1 = store.slug_for("foo")
+    time.sleep(1.1)
+    s2 = store.slug_for("foo")
+    assert s1 != s2
+
+
+def test_binary_input_written_as_bytes(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path)
+    project = store.create("binfile")
+    fake_docx = b"PK\x03\x04not-really-but-binary"
+    project.save_run(
+        title=None,
+        format_="docx",
+        provider="m",
+        model="m",
+        input_bytes=fake_docx,
+        input_filename="meeting.docx",
+        edited_markdown="cleaned",
+        change_log=[],
+        suggestions=[],
+        input_tokens=0,
+        output_tokens=0,
+    )
+    raw_files = list(project.raw_dir.glob("*.docx"))
+    assert len(raw_files) == 1
+    assert raw_files[0].read_bytes() == fake_docx
+    # And detail() doesn't choke on binary
+    detail = project.detail()
+    assert detail["raw_input"] == ""  # binary returns empty string, not crash

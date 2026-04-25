@@ -6,6 +6,7 @@
     clearscript run <input> [--provider claude] [--model claude-opus-4-7] [--out path]
     clearscript providers
     clearscript lib stats
+    clearscript projects list
     clearscript version
 """
 
@@ -25,6 +26,7 @@ from clearscript.core.pipeline import Pipeline
 from clearscript.export import write_docx, write_markdown
 from clearscript.library import Library
 from clearscript.providers import build_provider
+from clearscript.storage import ProjectStore
 
 app = typer.Typer(
     name="clearscript",
@@ -34,6 +36,10 @@ app = typer.Typer(
 )
 lib_app = typer.Typer(name="lib", help="Library inspection and management.", no_args_is_help=True)
 app.add_typer(lib_app, name="lib")
+projects_app = typer.Typer(
+    name="projects", help="Project history (every Run is auto-saved here).", no_args_is_help=True
+)
+app.add_typer(projects_app, name="projects")
 
 console = Console()
 err_console = Console(stderr=True)
@@ -235,6 +241,104 @@ def lib_add_term(
     console.print(
         f"[green]✓[/green] term {canonical!r} stored (id={term_id}, aliases={alias_list})"
     )
+
+
+@projects_app.command("list")
+def projects_list(
+    limit: int = typer.Option(50, "--limit", "-n", help="Max number of runs to show"),
+) -> None:
+    """List saved project runs, newest first."""
+    cfg = load_config()
+    ensure_dirs(cfg)
+    store = ProjectStore(cfg.projects_root)
+    rows = store.list_summaries(limit=limit)
+
+    if not rows:
+        console.print(
+            f"[dim]No saved runs yet. Projects are saved to {cfg.projects_root} after each Run.[/dim]"
+        )
+        return
+
+    table = Table(title=f"Project history · {len(rows)} runs ({cfg.projects_root})")
+    table.add_column("Created", style="bold")
+    table.add_column("Slug", overflow="fold")
+    table.add_column("Title", overflow="fold")
+    table.add_column("Format")
+    table.add_column("Model", overflow="fold")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Changes", justify="right")
+    for r in rows:
+        created = (r.get("created_at") or "").replace("T", " ")[:16]
+        table.add_row(
+            created,
+            r["slug"],
+            r.get("title") or "—",
+            (r.get("format") or "—").upper(),
+            r.get("model") or "—",
+            str(r.get("total_tokens") or 0),
+            str(r.get("change_count") or 0),
+        )
+    console.print(table)
+
+
+@projects_app.command("show")
+def projects_show(
+    slug: str = typer.Argument(..., help="Project slug from `projects list`"),
+    json_out: bool = typer.Option(False, "--json", help="Print raw JSON detail"),
+) -> None:
+    """Show the cleaned transcript and meta for one saved run."""
+    cfg = load_config()
+    ensure_dirs(cfg)
+    store = ProjectStore(cfg.projects_root)
+    if not store.exists(slug):
+        err_console.print(f"[red]Project {slug!r} not found in {cfg.projects_root}[/red]")
+        raise typer.Exit(1)
+
+    detail = store.open(slug).detail()
+    if json_out:
+        console.print_json(json.dumps(detail, ensure_ascii=False))
+        return
+
+    console.print(f"[bold]Slug:[/bold]    {detail.get('slug')}")
+    console.print(f"[bold]Title:[/bold]   {detail.get('title') or '—'}")
+    console.print(f"[bold]Created:[/bold] {detail.get('created_at') or '—'}")
+    console.print(f"[bold]Provider:[/bold] {detail.get('provider')} · model: {detail.get('model')}")
+    console.print(f"[bold]Tokens:[/bold]  {detail.get('total_tokens')} (in={detail.get('input_tokens')} out={detail.get('output_tokens')})")
+    console.print(f"[bold]Changes:[/bold] {len(detail.get('change_log') or [])}")
+    console.print(f"[bold]Suggestions:[/bold] {len(detail.get('suggestions') or [])}")
+    console.print()
+    console.print("[bold]Cleaned transcript[/bold] [dim]({} chars)[/dim]:".format(len(detail.get("cleaned_markdown") or "")))
+    console.print(detail.get("cleaned_markdown") or "(empty)")
+
+
+@projects_app.command("delete")
+def projects_delete(
+    slug: str = typer.Argument(..., help="Project slug to delete"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Permanently delete a saved run."""
+    cfg = load_config()
+    ensure_dirs(cfg)
+    store = ProjectStore(cfg.projects_root)
+    if not store.exists(slug):
+        err_console.print(f"[red]Project {slug!r} not found[/red]")
+        raise typer.Exit(1)
+
+    if not yes:
+        confirm = typer.confirm(f"Delete project {slug!r}? This is permanent.")
+        if not confirm:
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    store.delete(slug)
+    console.print(f"[green]✓[/green] deleted {slug}")
+
+
+@projects_app.command("path")
+def projects_path() -> None:
+    """Print the projects root directory."""
+    cfg = load_config()
+    console.print(str(cfg.projects_root))
 
 
 @lib_app.command("lookup")

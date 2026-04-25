@@ -96,6 +96,10 @@
         class="tab-btn bauhaus-press border-r-4 border-ink px-6 py-3 text-xs font-black uppercase tracking-widest bg-ink text-white hover:bg-bg hover:text-ink">
         Library  <span id="lib-count-badge" class="ml-2 inline-block px-2 py-0.5 bg-yellow text-ink border-2 border-ink text-[10px] font-mono">0</span>
       </button>
+      <button data-tab="projects"
+        class="tab-btn bauhaus-press border-r-4 border-ink px-6 py-3 text-xs font-black uppercase tracking-widest bg-ink text-white hover:bg-bg hover:text-ink">
+        Projects  <span id="proj-count-badge" class="ml-2 inline-block px-2 py-0.5 bg-red text-white border-2 border-ink text-[10px] font-mono">0</span>
+      </button>
     </div>
   </nav>
 
@@ -378,6 +382,72 @@
     </section>
   </div>
 
+  <!-- =========== PROJECTS VIEW =========== -->
+  <div id="view-projects" class="view hidden-view">
+    <section class="border-b-4 border-ink bg-red text-white">
+      <div class="max-w-[1400px] mx-auto px-6 py-4 flex items-center gap-4">
+        <h2 class="font-black uppercase tracking-widest text-sm">Project history</h2>
+        <span class="text-xs font-bold uppercase tracking-widest opacity-80">Every Run is auto-saved here. Open one to re-download or audit.</span>
+        <button id="projects-refresh-btn" class="ml-auto bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow">↻ Refresh</button>
+      </div>
+    </section>
+
+    <main class="max-w-[1400px] mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <!-- LIST -->
+      <section class="lg:col-span-2 border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-ink text-white px-5 py-3 flex items-center gap-3">
+          <h3 class="font-black uppercase tracking-widest text-sm">Runs</h3>
+          <span id="projects-count" class="ml-auto text-xs font-mono text-white/60">—</span>
+        </header>
+        <div id="projects-list" class="overflow-auto panel-scroll max-h-[680px]">
+          <p class="text-center text-ink/40 italic py-8">Loading…</p>
+        </div>
+      </section>
+
+      <!-- DETAIL -->
+      <section class="lg:col-span-3 border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-blue text-white px-5 py-3 flex items-center gap-3">
+          <h3 id="project-detail-title" class="font-black uppercase tracking-widest text-sm">Select a run</h3>
+          <div class="ml-auto flex items-center gap-2">
+            <button id="proj-download-md" class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40" disabled>↓ .md</button>
+            <button id="proj-download-docx" class="bauhaus-press border-2 border-ink bg-yellow text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90 disabled:opacity-40" disabled>↓ .docx</button>
+            <button id="proj-download-input" class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40" disabled>↓ raw</button>
+            <button id="proj-delete" class="bauhaus-press border-2 border-ink bg-red text-white px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90 disabled:opacity-40" disabled>🗑 Delete</button>
+          </div>
+        </header>
+
+        <div id="project-detail-empty" class="p-8 text-center text-ink/40 italic">
+          Pick a run from the list to see input, cleaned output, change log, and library suggestions.
+        </div>
+
+        <div id="project-detail" class="hidden">
+          <!-- Stats grid -->
+          <div class="border-b-4 border-ink p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Format</div><div id="pd-stat-format" class="font-mono font-black text-sm uppercase">—</div></div>
+            <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Model</div><div id="pd-stat-model" class="font-mono font-black text-xs">—</div></div>
+            <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Tokens</div><div id="pd-stat-tokens" class="font-mono font-black text-sm">—</div></div>
+            <div class="border-2 border-ink bg-yellow px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/80">Changes</div><div id="pd-stat-changes" class="font-mono font-black text-sm">—</div></div>
+          </div>
+
+          <!-- Sub-tabs for content panels -->
+          <nav class="border-b-4 border-ink bg-bg flex">
+            <button data-pdtab="cleaned" class="pd-tab bauhaus-press border-r-4 border-ink px-4 py-2 text-[11px] font-black uppercase tracking-widest bg-red text-white">Cleaned</button>
+            <button data-pdtab="raw" class="pd-tab bauhaus-press border-r-4 border-ink px-4 py-2 text-[11px] font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Raw input</button>
+            <button data-pdtab="changelog" class="pd-tab bauhaus-press border-r-4 border-ink px-4 py-2 text-[11px] font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Change log</button>
+            <button data-pdtab="suggestions" class="pd-tab bauhaus-press border-r-4 border-ink px-4 py-2 text-[11px] font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Suggestions</button>
+            <button data-pdtab="briefing" class="pd-tab bauhaus-press border-r-4 border-ink px-4 py-2 text-[11px] font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Briefing</button>
+          </nav>
+
+          <pre id="pd-cleaned" class="pd-panel font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
+          <pre id="pd-raw" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap text-ink/70"></pre>
+          <pre id="pd-changelog" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
+          <pre id="pd-suggestions" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
+          <pre id="pd-briefing" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap text-ink/80"></pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
   <!-- =========== FOOTER =========== -->
   <footer class="border-t-4 border-ink bg-ink text-bg mt-8">
     <div class="max-w-[1400px] mx-auto px-6 py-5 flex flex-wrap gap-4 items-center justify-between text-xs font-bold uppercase tracking-widest">
@@ -399,9 +469,12 @@
     const state = {
       providers: [], defaultProvider: null, selectedProvider: null,
       lastResult: null, suggestions: [], selectedSuggestions: new Set(),
-      tab: 'editor', subtab: 'terms',
+      tab: 'editor', subtab: 'terms', pdtab: 'cleaned',
       pendingFile: null,            // File object for binary uploads (e.g. .docx)
       pendingFormat: null,          // "md" / "srt" / "vtt" / "json" / "docx" / "txt"
+      projects: [],
+      selectedProjectSlug: null,
+      projectDetail: null,
     };
 
     const TEXT_FORMATS = new Set(['txt', 'md', 'srt', 'vtt', 'json']);
@@ -420,6 +493,7 @@
       state.tab = name;
       $('view-editor').classList.toggle('hidden-view', name !== 'editor');
       $('view-library').classList.toggle('hidden-view', name !== 'library');
+      $('view-projects').classList.toggle('hidden-view', name !== 'projects');
       $$('.tab-btn').forEach((btn) => {
         const active = btn.dataset.tab === name;
         btn.classList.toggle('bg-white', active);
@@ -431,6 +505,9 @@
       if (name === 'library') {
         loadLibStats();
         loadActiveSubtab();
+      }
+      if (name === 'projects') {
+        loadProjects();
       }
     }
     function setSubtab(name) {
@@ -618,7 +695,10 @@
         state.lastResult = data;
         renderResult(data, elapsed);
         renderSuggestions(data.suggestions || []);
-        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${(data.suggestions || []).length} library suggestions`, 'ok');
+        const slugTag = data.project_slug ? ` · saved as ${data.project_slug}` : '';
+        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${(data.suggestions || []).length} library suggestions${slugTag}`, 'ok');
+        // Update Projects tab badge so user sees the count tick up immediately.
+        loadProjects();
       } catch (e) { setStatus('Network error: ' + e.message, 'error'); }
       finally { setRunning(false); }
     }
@@ -918,6 +998,117 @@
       loadPatterns(); loadLibStats();
     }
 
+    // ============ Projects ============
+    async function loadProjects() {
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      state.projects = data.projects;
+      $('proj-count-badge').textContent = state.projects.length;
+      $('projects-count').textContent = `${state.projects.length} runs`;
+      const list = $('projects-list');
+      if (!state.projects.length) {
+        list.innerHTML = '<p class="text-center text-ink/40 italic py-8">No runs yet. Run a transcript on the Editor tab and it\'ll show up here.</p>';
+        return;
+      }
+      list.innerHTML = '';
+      state.projects.forEach((p) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        const isActive = p.slug === state.selectedProjectSlug;
+        card.className = `block w-full text-left border-b-2 border-ink/10 hover:bg-yellow/30 px-4 py-3 transition-colors ${isActive ? 'bg-yellow' : ''}`;
+        card.dataset.slug = p.slug;
+        const dateLabel = p.created_at ? p.created_at.replace('T', ' ').slice(0, 16) : '—';
+        const tokensLabel = (p.total_tokens || 0).toLocaleString();
+        const formatPill = `<span class="border-2 border-ink bg-white text-ink px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest mr-1">${escapeHtml(p.format || '?')}</span>`;
+        card.innerHTML = `
+          <div class="flex items-start gap-2 mb-1">
+            ${formatPill}
+            <span class="font-bold text-sm flex-1 truncate">${escapeHtml(p.title || p.slug)}</span>
+          </div>
+          <div class="text-[11px] font-mono text-ink/60 flex items-center gap-3">
+            <span>${dateLabel}</span>
+            <span>·</span>
+            <span>${tokensLabel} tokens</span>
+            <span>·</span>
+            <span>${p.change_count || 0} changes</span>
+          </div>
+        `;
+        card.addEventListener('click', () => selectProject(p.slug));
+        list.appendChild(card);
+      });
+    }
+
+    async function selectProject(slug) {
+      state.selectedProjectSlug = slug;
+      // re-render list to show highlight
+      loadProjects();
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(slug)}`);
+        if (!res.ok) {
+          $('project-detail-empty').textContent = 'Failed to load.';
+          return;
+        }
+        const data = await res.json();
+        state.projectDetail = data;
+        renderProjectDetail(data);
+      } catch (e) {
+        $('project-detail-empty').textContent = 'Network error: ' + e.message;
+      }
+    }
+
+    function renderProjectDetail(d) {
+      $('project-detail-empty').classList.add('hidden');
+      $('project-detail').classList.remove('hidden');
+      $('project-detail-title').textContent = d.title || d.slug;
+      $('pd-stat-format').textContent = d.format || '—';
+      $('pd-stat-model').textContent = d.model || '—';
+      $('pd-stat-tokens').textContent = (d.total_tokens || 0).toLocaleString();
+      $('pd-stat-changes').textContent = (d.change_log?.length || 0).toLocaleString();
+      $('pd-cleaned').textContent = d.cleaned_markdown || '(empty)';
+      $('pd-raw').textContent = d.raw_input || '(binary input — use ↓ raw to download)';
+      $('pd-changelog').textContent = d.change_log?.length ? JSON.stringify(d.change_log, null, 2) : '(no changes)';
+      $('pd-suggestions').textContent = d.suggestions?.length ? JSON.stringify(d.suggestions, null, 2) : '(no suggestions)';
+      $('pd-briefing').textContent = d.briefing || '(no briefing supplied)';
+
+      ['proj-download-md', 'proj-download-docx', 'proj-download-input', 'proj-delete'].forEach((id) => $(id).disabled = false);
+      setPdTab('cleaned');
+    }
+
+    function setPdTab(name) {
+      state.pdtab = name;
+      const map = {
+        cleaned: 'pd-cleaned',
+        raw: 'pd-raw',
+        changelog: 'pd-changelog',
+        suggestions: 'pd-suggestions',
+        briefing: 'pd-briefing',
+      };
+      Object.entries(map).forEach(([k, id]) => {
+        $(id).classList.toggle('hidden', k !== name);
+      });
+      $$('.pd-tab').forEach((btn) => {
+        const active = btn.dataset.pdtab === name;
+        btn.classList.toggle('bg-red', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-ink', !active);
+      });
+    }
+
+    async function deleteProject() {
+      if (!state.selectedProjectSlug) return;
+      if (!confirm(`Delete project ${state.selectedProjectSlug}? This is permanent.`)) return;
+      const res = await fetch(`/api/projects/${encodeURIComponent(state.selectedProjectSlug)}`, { method: 'DELETE' });
+      if (!res.ok) { alert('Delete failed: ' + res.statusText); return; }
+      state.selectedProjectSlug = null;
+      state.projectDetail = null;
+      $('project-detail').classList.add('hidden');
+      $('project-detail-empty').classList.remove('hidden');
+      $('project-detail-empty').textContent = 'Pick a run from the list to see input, cleaned output, change log, and library suggestions.';
+      ['proj-download-md', 'proj-download-docx', 'proj-download-input', 'proj-delete'].forEach((id) => $(id).disabled = true);
+      loadProjects();
+    }
+
     // ============ Helpers ============
     function escapeHtml(s) {
       if (s == null) return '';
@@ -985,10 +1176,27 @@
       $('patterns-add-btn').addEventListener('click', () => $('patterns-add-form').classList.toggle('hidden'));
       $('patterns-add-submit').addEventListener('click', addPattern);
 
+      // Projects
+      $('projects-refresh-btn').addEventListener('click', loadProjects);
+      $$('.pd-tab').forEach((btn) => btn.addEventListener('click', () => setPdTab(btn.dataset.pdtab)));
+      $('proj-download-md').addEventListener('click', () => {
+        if (state.selectedProjectSlug) window.location = `/api/projects/${encodeURIComponent(state.selectedProjectSlug)}/transcript.md`;
+      });
+      $('proj-download-docx').addEventListener('click', () => {
+        if (state.selectedProjectSlug) window.location = `/api/projects/${encodeURIComponent(state.selectedProjectSlug)}/transcript.docx`;
+      });
+      $('proj-download-input').addEventListener('click', () => {
+        if (state.selectedProjectSlug) window.location = `/api/projects/${encodeURIComponent(state.selectedProjectSlug)}/input`;
+      });
+      $('proj-delete').addEventListener('click', deleteProject);
+
       // Initial tab from hash
       const initial = window.location.hash.replace('#', '') || 'editor';
-      setTab(initial === 'library' ? 'library' : 'editor');
+      const validTab = ['editor', 'library', 'projects'].includes(initial) ? initial : 'editor';
+      setTab(validTab);
       setSubtab('terms');
+      // Refresh projects badge on first load too
+      loadProjects();
     });
   </script>
 </body>

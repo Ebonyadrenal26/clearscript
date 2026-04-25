@@ -32,6 +32,7 @@ from clearscript.ingest.txt import TxtAdapter
 from clearscript.ingest.vtt import VttAdapter
 from clearscript.library import Library
 from clearscript.providers import build_provider
+from clearscript.storage import ProjectStore
 
 _FORMAT_ADAPTERS = {
     "txt": TxtAdapter,
@@ -40,6 +41,27 @@ _FORMAT_ADAPTERS = {
     "vtt": VttAdapter,
     "json": JsonAdapter,
 }
+
+
+def _slug_hint_from_input(text: str | None, filename: str | None) -> str:
+    """Pick a project slug hint from filename, first speaker line, or first line."""
+    if filename:
+        stem = Path(filename).stem
+        if stem:
+            return stem
+    if text:
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            for delim in (":", "："):
+                if delim in line:
+                    candidate = line.split(delim, 1)[1].strip()
+                    if candidate:
+                        return candidate[:50]
+            return line[:50]
+    return "transcript"
+
 
 # ============ Request/response models (module-level so FastAPI can introspect) ============
 
@@ -61,6 +83,7 @@ class RunResponse(BaseModel):
     output_tokens: int
     model: str
     provider: str
+    project_slug: str | None = None  # set when the run was persisted to disk
 
 
 class ExportRequest(BaseModel):
@@ -179,8 +202,20 @@ def create_app() -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         return llm, chosen_model
 
-    def _run_with_transcript(transcript_obj, llm, chosen_model: str, briefing: str) -> RunResponse:
+    def _run_with_transcript(
+        transcript_obj,
+        llm,
+        chosen_model: str,
+        briefing: str,
+        *,
+        title: str | None = None,
+        format_: str = "txt",
+        save_input_text: str | None = None,
+        save_input_bytes: bytes | None = None,
+        save_input_filename: str | None = None,
+    ) -> RunResponse:
         library = open_library()
+        t0 = time.time()
         try:
             pipeline = Pipeline(
                 provider=llm,
@@ -194,6 +229,34 @@ def create_app() -> FastAPI:
                 raise HTTPException(500, f"Pipeline error: {exc}") from exc
         finally:
             library.close()
+        duration = time.time() - t0
+
+        # Persist as a project so the user can browse it later.
+        project_slug: str | None = None
+        try:
+            store = ProjectStore(cfg().projects_root)
+            slug_hint = title or _slug_hint_from_input(save_input_text, save_input_filename)
+            project = store.create(slug_hint)
+            project.save_run(
+                title=title,
+                format_=format_,
+                provider=result.provider,
+                model=result.model,
+                input_text=save_input_text,
+                input_bytes=save_input_bytes,
+                input_filename=save_input_filename,
+                briefing=briefing or "",
+                edited_markdown=result.edited_markdown,
+                change_log=result.change_log,
+                suggestions=result.suggestions,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                duration_sec=duration,
+            )
+            project_slug = project.slug
+        except OSError:
+            # Persistence failure should not break the user's primary flow.
+            project_slug = None
 
         return RunResponse(
             edited_markdown=result.edited_markdown,
@@ -203,6 +266,7 @@ def create_app() -> FastAPI:
             output_tokens=result.output_tokens,
             model=result.model,
             provider=result.provider,
+            project_slug=project_slug,
         )
 
     @app.post("/api/run", response_model=RunResponse)
@@ -219,7 +283,15 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, f"Failed to parse {fmt!r}: {exc}") from exc
 
-        return _run_with_transcript(transcript_obj, llm, chosen_model, req.briefing or "")
+        return _run_with_transcript(
+            transcript_obj,
+            llm,
+            chosen_model,
+            req.briefing or "",
+            title=req.title,
+            format_=fmt,
+            save_input_text=req.transcript,
+        )
 
     @app.post("/api/run-file", response_model=RunResponse)
     async def run_pipeline_file(
@@ -242,16 +314,28 @@ def create_app() -> FastAPI:
 
         llm, chosen_model = _resolve_pipeline_pieces(provider, model)
 
+        file_bytes = await file.read()
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp_path = Path(tmp.name)
-            tmp.write(await file.read())
+            tmp.write(file_bytes)
 
         try:
             try:
                 transcript_obj = parse_path(tmp_path)
             except ValueError as exc:
                 raise HTTPException(400, f"Failed to parse {suffix}: {exc}") from exc
-            return _run_with_transcript(transcript_obj, llm, chosen_model, briefing or "")
+
+            fmt = suffix.lstrip(".").lower()
+            return _run_with_transcript(
+                transcript_obj,
+                llm,
+                chosen_model,
+                briefing or "",
+                title=title,
+                format_=fmt,
+                save_input_bytes=file_bytes,
+                save_input_filename=file.filename,
+            )
         finally:
             with contextlib.suppress(FileNotFoundError):
                 tmp_path.unlink()
@@ -289,6 +373,75 @@ def create_app() -> FastAPI:
         if input_path.is_file():
             return {"transcript": input_path.read_text(encoding="utf-8")}
         return {"transcript": ""}
+
+    # ============ Projects ============
+
+    @app.get("/api/projects")
+    def list_projects(limit: int = 200) -> dict:
+        store = ProjectStore(cfg().projects_root)
+        return {"projects": store.list_summaries(limit=limit)}
+
+    @app.get("/api/projects/{slug}")
+    def get_project(slug: str) -> dict:
+        store = ProjectStore(cfg().projects_root)
+        if not store.exists(slug):
+            raise HTTPException(404, f"Project {slug!r} not found")
+        return store.open(slug).detail()
+
+    @app.delete("/api/projects/{slug}", status_code=204)
+    def delete_project(slug: str) -> Response:
+        store = ProjectStore(cfg().projects_root)
+        if not store.delete(slug):
+            raise HTTPException(404, f"Project {slug!r} not found")
+        return Response(status_code=204)
+
+    @app.get("/api/projects/{slug}/transcript.md")
+    def project_transcript_md(slug: str) -> Response:
+        store = ProjectStore(cfg().projects_root)
+        if not store.exists(slug):
+            raise HTTPException(404, "not found")
+        path = store.open(slug).cleaned_md_path
+        if not path.is_file():
+            raise HTTPException(404, "no cleaned transcript")
+        return Response(
+            content=path.read_bytes(),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{slug}.md"'},
+        )
+
+    @app.get("/api/projects/{slug}/transcript.docx")
+    def project_transcript_docx(slug: str) -> Response:
+        store = ProjectStore(cfg().projects_root)
+        if not store.exists(slug):
+            raise HTTPException(404, "not found")
+        project = store.open(slug)
+        # Generate on demand from the saved markdown — keeps storage lean.
+        if not project.cleaned_docx_path.is_file():
+            if not project.cleaned_md_path.is_file():
+                raise HTTPException(404, "no cleaned transcript")
+            md = project.cleaned_md_path.read_text(encoding="utf-8")
+            write_docx(md, project.cleaned_docx_path)
+        return Response(
+            content=project.cleaned_docx_path.read_bytes(),
+            media_type=("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            headers={"Content-Disposition": f'attachment; filename="{slug}.docx"'},
+        )
+
+    @app.get("/api/projects/{slug}/input")
+    def project_raw_input(slug: str) -> Response:
+        store = ProjectStore(cfg().projects_root)
+        if not store.exists(slug):
+            raise HTTPException(404, "not found")
+        project = store.open(slug)
+        for path in project.raw_dir.glob("input.*"):
+            return Response(
+                content=path.read_bytes(),
+                media_type="application/octet-stream",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{path.name}"',
+                },
+            )
+        raise HTTPException(404, "no input file stored")
 
     # ============ Library: stats ============
 

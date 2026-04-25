@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-04-25
+
+### Added — every Run is now a project
+
+- **Project history**: every successful Run auto-saves to `~/Documents/clearscript/projects/<slug>/` with the original input, briefing (if any), cleaned markdown, change log, library suggestions, and a `meta.json` summary. No data loss when you close the browser.
+- **Slug format**: `2026-04-25-143012-acme-cto-interview` — date + seconds-precision time + best-effort title from the briefing/filename. Two runs in the same minute can't collide.
+- **Projects tab in the web UI** — third top-nav tab between Library and the Editor. Bauhaus-styled split layout: list on the left (with format pill, date, token count, change count), detail panel on the right with five sub-tabs (Cleaned / Raw input / Change log / Suggestions / Briefing). Per-row download buttons (`.md` / `.docx` / raw input) and delete.
+- **`POST /api/run` and `/api/run-file`** now return a `project_slug` so the editor's success status line shows where the run was saved.
+- **Server endpoints** for the Projects tab:
+  - `GET /api/projects` (list summaries)
+  - `GET /api/projects/{slug}` (full detail)
+  - `DELETE /api/projects/{slug}`
+  - `GET /api/projects/{slug}/transcript.md` (download cleaned output)
+  - `GET /api/projects/{slug}/transcript.docx` (auto-generated from the saved markdown on first request)
+  - `GET /api/projects/{slug}/input` (download original raw input)
+- **CLI**: new `clearscript projects` subcommand:
+  - `clearscript projects list [--limit N]`
+  - `clearscript projects show <slug> [--json]`
+  - `clearscript projects delete <slug> [-y]`
+  - `clearscript projects path` (prints the projects root)
+
+### Changed
+
+- Editor success status now shows `… · saved as <slug>` when persistence worked, so you can immediately tell where to find the run.
+- Web UI hash routing extended to `#editor` / `#library` / `#projects`. Refresh-friendly.
+- Bumped to `0.0.5`.
+
+### Tests
+
+- 8 new unit tests in `test_projects.py` covering: full save round-trip, summary extraction, detail payload assembly, list-newest-first sort, delete + idempotent re-delete, second-precision slug uniqueness, binary-input bytes round-trip without crashing the detail view.
+- Total: 74 tests, all passing. Lint clean.
+
 ## [0.0.4] - 2026-04-25
 
 ### Added — feed it your real transcripts
