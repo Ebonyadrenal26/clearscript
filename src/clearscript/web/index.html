@@ -38,18 +38,21 @@
       background-color: #F0F0F0;
       background-image: radial-gradient(#121212 1.2px, transparent 1.2px);
       background-size: 22px 22px;
-      background-position: 0 0;
       color: #121212;
       font-family: 'Outfit', system-ui, sans-serif;
     }
-    .bauhaus-press:active {
-      transform: translate(2px, 2px);
-      box-shadow: none !important;
-    }
-    /* scrollbar */
-    .panel-scroll::-webkit-scrollbar { width: 10px; }
-    .panel-scroll::-webkit-scrollbar-track { background: #F0F0F0; border-left: 2px solid #121212; }
+    .bauhaus-press:active { transform: translate(2px, 2px); box-shadow: none !important; }
+    .panel-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .panel-scroll::-webkit-scrollbar-track { background: #F0F0F0; }
     .panel-scroll::-webkit-scrollbar-thumb { background: #121212; }
+    .hidden-view { display: none !important; }
+    /* Status badge dots in tables */
+    .status-dot { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #121212; vertical-align: middle; margin-right: 6px; }
+    .status-proposed { background: #FFFFFF; }
+    .status-confirmed { background: #1040C0; }
+    .status-verified  { background: #D02020; }
+    .status-disputed  { background: #F0C020; }
+    .status-deprecated { background: #E0E0E0; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -58,8 +61,7 @@
   <header class="border-b-4 border-ink bg-bg">
     <div class="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
 
-      <div class="flex items-center gap-4">
-        <!-- Geometric logo (inline SVG, three primitives) -->
+      <a href="#editor" class="flex items-center gap-4 cursor-pointer">
         <svg viewBox="0 0 60 60" width="44" height="44" aria-hidden="true">
           <polygon points="14,46 50,46 32,12" fill="#F0C020" stroke="#121212" stroke-width="3" />
           <g transform="translate(40 32) rotate(45)">
@@ -71,7 +73,7 @@
           <h1 class="font-black text-3xl tracking-tighter">clearscript</h1>
           <p class="text-[11px] font-bold tracking-[0.18em] mt-1">LOCAL-FIRST · BYOM · COMPOUNDING LIBRARY</p>
         </div>
-      </div>
+      </a>
 
       <div class="flex items-center gap-3">
         <span id="version" class="text-xs font-bold uppercase tracking-widest text-ink/60">loading…</span>
@@ -83,137 +85,292 @@
     </div>
   </header>
 
-  <!-- =========== PROVIDER STRIP =========== -->
-  <section class="border-b-4 border-ink bg-yellow">
-    <div class="max-w-[1400px] mx-auto px-6 py-4 flex flex-wrap items-center gap-4">
-      <span class="font-black uppercase tracking-widest text-xs">Provider</span>
-      <div id="provider-pills" class="flex flex-wrap gap-2">
-        <!-- filled by JS -->
-        <span class="text-sm">loading providers…</span>
-      </div>
-      <div class="ml-auto flex items-center gap-3">
-        <label for="model-input" class="font-black uppercase tracking-widest text-xs">Model</label>
-        <input id="model-input"
-          class="border-2 border-ink bg-white px-3 py-2 text-sm font-mono w-72 focus:outline-none focus:shadow-bauhaus-sm"
-          placeholder="(provider default)" />
-      </div>
+  <!-- =========== TAB NAV =========== -->
+  <nav class="border-b-4 border-ink bg-ink">
+    <div class="max-w-[1400px] mx-auto px-6 flex">
+      <button data-tab="editor"
+        class="tab-btn bauhaus-press border-x-4 border-ink px-6 py-3 text-xs font-black uppercase tracking-widest bg-white text-ink">
+        Editor
+      </button>
+      <button data-tab="library"
+        class="tab-btn bauhaus-press border-r-4 border-ink px-6 py-3 text-xs font-black uppercase tracking-widest bg-ink text-white hover:bg-bg hover:text-ink">
+        Library  <span id="lib-count-badge" class="ml-2 inline-block px-2 py-0.5 bg-yellow text-ink border-2 border-ink text-[10px] font-mono">0</span>
+      </button>
     </div>
-  </section>
+  </nav>
 
-  <!-- =========== MAIN PANELS =========== -->
-  <main class="max-w-[1400px] mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-    <!-- ============ INPUT PANEL ============ -->
-    <section class="border-4 border-ink bg-white shadow-bauhaus-lg">
-      <header class="border-b-4 border-ink bg-blue text-white px-5 py-3 flex items-center justify-between">
-        <h2 class="font-black uppercase tracking-widest text-sm">Raw transcript</h2>
-        <div class="flex items-center gap-2">
-          <button id="load-example-btn"
-            class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow">
-            Load example
-          </button>
-          <button id="clear-btn"
-            class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow">
-            Clear
-          </button>
+  <!-- =========== EDITOR VIEW =========== -->
+  <div id="view-editor" class="view">
+    <!-- Provider strip -->
+    <section class="border-b-4 border-ink bg-yellow">
+      <div class="max-w-[1400px] mx-auto px-6 py-4 flex flex-wrap items-center gap-4">
+        <span class="font-black uppercase tracking-widest text-xs">Provider</span>
+        <div id="provider-pills" class="flex flex-wrap gap-2">
+          <span class="text-sm">loading providers…</span>
         </div>
-      </header>
-
-      <div class="p-5">
-        <!-- Drag-drop affordance -->
-        <div id="drop-zone"
-          class="border-2 border-dashed border-ink/40 px-4 py-3 mb-3 text-center text-xs font-bold uppercase tracking-widest text-ink/70">
-          Drop a .txt file here · or click to upload · or paste below
-          <input type="file" id="file-input" accept=".txt,.md" class="hidden" />
+        <div class="ml-auto flex items-center gap-3">
+          <label for="model-input" class="font-black uppercase tracking-widest text-xs">Model</label>
+          <input id="model-input"
+            class="border-2 border-ink bg-white px-3 py-2 text-sm font-mono w-72 focus:outline-none focus:shadow-bauhaus-sm"
+            placeholder="(provider default)" />
         </div>
-
-        <textarea id="transcript-input"
-          class="w-full h-[420px] font-mono text-sm border-2 border-ink p-3 bg-bg focus:outline-none focus:shadow-bauhaus-sm resize-none panel-scroll"
-          placeholder="Paste your raw ASR transcript here…&#10;&#10;Example formats supported in v0.0.2:&#10;  Speaker 1: hello there&#10;  [Speaker 2]: hi back&#10;  张三: 你好&#10;  李四: 你好啊"></textarea>
-
-        <div class="mt-4 grid grid-cols-1 gap-3">
-          <input id="title-input" type="text"
-            class="border-2 border-ink px-3 py-2 text-sm bg-white focus:outline-none focus:shadow-bauhaus-sm"
-            placeholder="Optional title (goes at the top of the deliverable)" />
-          <textarea id="briefing-input"
-            class="border-2 border-ink px-3 py-2 text-sm bg-white focus:outline-none focus:shadow-bauhaus-sm resize-none"
-            rows="3"
-            placeholder="Optional briefing — name the speakers, list seed terms (e.g. 'Speaker 1 = Siqi (host); Speaker 2 = Eileen (founder of Acme); seed terms: Dify, Manus, Mem9')"></textarea>
-        </div>
-
-        <div class="mt-5 flex items-center justify-between gap-3">
-          <p id="input-meta" class="text-[11px] font-bold uppercase tracking-widest text-ink/60">0 chars</p>
-          <button id="run-btn"
-            class="bauhaus-press border-4 border-ink bg-red text-white px-8 py-3 text-base font-black uppercase tracking-wider shadow-bauhaus-md hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
-            ▶  Clean transcript
-          </button>
-        </div>
-
-        <div id="status"
-          class="mt-4 hidden border-2 border-ink p-3 text-sm font-bold"></div>
       </div>
     </section>
 
-    <!-- ============ OUTPUT PANEL ============ -->
-    <section class="border-4 border-ink bg-white shadow-bauhaus-lg">
-      <header class="border-b-4 border-ink bg-red text-white px-5 py-3 flex items-center justify-between">
-        <h2 class="font-black uppercase tracking-widest text-sm">Cleaned output</h2>
-        <div class="flex items-center gap-2">
-          <button id="copy-btn"
-            class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40"
-            disabled>
-            Copy MD
-          </button>
-          <button id="download-md-btn"
-            class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40"
-            disabled>
-            ↓ .md
-          </button>
-          <button id="download-docx-btn"
-            class="bauhaus-press border-2 border-ink bg-yellow text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90 disabled:opacity-40"
-            disabled>
-            ↓ .docx
-          </button>
-        </div>
-      </header>
+    <main class="max-w-[1400px] mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-      <div class="p-5">
-        <div id="output-preview"
-          class="font-mono text-sm w-full h-[420px] border-2 border-ink bg-bg p-3 overflow-auto whitespace-pre-wrap break-words panel-scroll text-ink/40">
-          Cleaned transcript appears here after you click "Clean transcript".
-        </div>
+      <!-- INPUT PANEL -->
+      <section class="border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-blue text-white px-5 py-3 flex items-center justify-between">
+          <h2 class="font-black uppercase tracking-widest text-sm">Raw transcript</h2>
+          <div class="flex items-center gap-2">
+            <button id="load-example-btn"
+              class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow">Load example</button>
+            <button id="clear-btn"
+              class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow">Clear</button>
+          </div>
+        </header>
 
-        <!-- Stats row -->
-        <div class="mt-4 grid grid-cols-4 gap-3 text-center">
-          <div class="border-2 border-ink bg-white px-3 py-2">
-            <div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">In</div>
-            <div id="stat-in" class="font-mono font-black text-lg">—</div>
+        <div class="p-5">
+          <div id="drop-zone"
+            class="border-2 border-dashed border-ink/40 px-4 py-3 mb-3 text-center text-xs font-bold uppercase tracking-widest text-ink/70 cursor-pointer">
+            Drop a .txt file here · or click to upload · or paste below
+            <input type="file" id="file-input" accept=".txt,.md" class="hidden" />
           </div>
-          <div class="border-2 border-ink bg-white px-3 py-2">
-            <div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Out</div>
-            <div id="stat-out" class="font-mono font-black text-lg">—</div>
-          </div>
-          <div class="border-2 border-ink bg-white px-3 py-2">
-            <div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Changes</div>
-            <div id="stat-changes" class="font-mono font-black text-lg">—</div>
-          </div>
-          <div class="border-2 border-ink bg-yellow px-3 py-2">
-            <div class="text-[10px] font-bold uppercase tracking-widest text-ink/80">Latency</div>
-            <div id="stat-time" class="font-mono font-black text-lg">—</div>
-          </div>
-        </div>
 
-        <!-- Change log accordion -->
-        <details class="mt-4 border-2 border-ink bg-white">
-          <summary class="cursor-pointer px-4 py-2 font-bold uppercase tracking-widest text-xs bg-bg select-none">
-            Change log <span id="changelog-count" class="ml-2 text-ink/60 font-mono">(0)</span>
-          </summary>
-          <pre id="changelog-pre"
-            class="font-mono text-xs p-4 max-h-[280px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
-        </details>
+          <textarea id="transcript-input"
+            class="w-full h-[420px] font-mono text-sm border-2 border-ink p-3 bg-bg focus:outline-none focus:shadow-bauhaus-sm resize-none panel-scroll"
+            placeholder="Paste your raw ASR transcript here…"></textarea>
+
+          <div class="mt-4 grid grid-cols-1 gap-3">
+            <input id="title-input" type="text"
+              class="border-2 border-ink px-3 py-2 text-sm bg-white focus:outline-none focus:shadow-bauhaus-sm"
+              placeholder="Optional title (goes at the top of the deliverable)" />
+            <textarea id="briefing-input"
+              class="border-2 border-ink px-3 py-2 text-sm bg-white focus:outline-none focus:shadow-bauhaus-sm resize-none"
+              rows="3"
+              placeholder="Optional briefing — name the speakers, list seed terms (e.g. 'Speaker 1 = Siqi (host); Speaker 2 = Eileen (founder of Acme); seed terms: Dify, Manus, Mem9')"></textarea>
+          </div>
+
+          <div class="mt-5 flex items-center justify-between gap-3">
+            <p id="input-meta" class="text-[11px] font-bold uppercase tracking-widest text-ink/60">0 chars</p>
+            <button id="run-btn"
+              class="bauhaus-press border-4 border-ink bg-red text-white px-8 py-3 text-base font-black uppercase tracking-wider shadow-bauhaus-md hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
+              ▶  Clean transcript
+            </button>
+          </div>
+
+          <div id="status" class="mt-4 hidden border-2 border-ink p-3 text-sm font-bold"></div>
+        </div>
+      </section>
+
+      <!-- OUTPUT PANEL -->
+      <section class="border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-red text-white px-5 py-3 flex items-center justify-between">
+          <h2 class="font-black uppercase tracking-widest text-sm">Cleaned output</h2>
+          <div class="flex items-center gap-2">
+            <button id="copy-btn" class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40" disabled>Copy MD</button>
+            <button id="download-md-btn" class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40" disabled>↓ .md</button>
+            <button id="download-docx-btn" class="bauhaus-press border-2 border-ink bg-yellow text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90 disabled:opacity-40" disabled>↓ .docx</button>
+          </div>
+        </header>
+
+        <div class="p-5">
+          <div id="output-preview"
+            class="font-mono text-sm w-full h-[420px] border-2 border-ink bg-bg p-3 overflow-auto whitespace-pre-wrap break-words panel-scroll text-ink/40">
+            Cleaned transcript appears here after you click "Clean transcript".
+          </div>
+
+          <div class="mt-4 grid grid-cols-4 gap-3 text-center">
+            <div class="border-2 border-ink bg-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">In</div><div id="stat-in" class="font-mono font-black text-lg">—</div></div>
+            <div class="border-2 border-ink bg-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Out</div><div id="stat-out" class="font-mono font-black text-lg">—</div></div>
+            <div class="border-2 border-ink bg-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Changes</div><div id="stat-changes" class="font-mono font-black text-lg">—</div></div>
+            <div class="border-2 border-ink bg-yellow px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/80">Latency</div><div id="stat-time" class="font-mono font-black text-lg">—</div></div>
+          </div>
+
+          <details class="mt-4 border-2 border-ink bg-white">
+            <summary class="cursor-pointer px-4 py-2 font-bold uppercase tracking-widest text-xs bg-bg select-none">
+              Change log <span id="changelog-count" class="ml-2 text-ink/60 font-mono">(0)</span>
+            </summary>
+            <pre id="changelog-pre" class="font-mono text-xs p-4 max-h-[280px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ MODE B: SUGGESTION HARVEST ============ -->
+    <section id="suggestions-panel" class="hidden max-w-[1400px] mx-auto px-6 pb-6">
+      <div class="border-4 border-ink bg-yellow shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink px-5 py-3 flex items-center justify-between">
+          <h2 class="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#D02020" stroke="#121212" stroke-width="2"/></svg>
+            Library suggestions
+            <span id="suggestions-count" class="text-ink/60 font-mono">(0)</span>
+          </h2>
+          <div class="flex gap-2">
+            <button id="suggestion-select-all"
+              class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-bg">Select all</button>
+            <button id="suggestion-accept"
+              class="bauhaus-press border-2 border-ink bg-red text-white px-4 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">Accept selected → library</button>
+            <button id="suggestion-dismiss"
+              class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-bg">Dismiss</button>
+          </div>
+        </header>
+        <div id="suggestions-list" class="p-4 space-y-2 max-h-[400px] overflow-auto panel-scroll">
+          <!-- filled by JS -->
+        </div>
       </div>
     </section>
-  </main>
+  </div>
+
+  <!-- =========== LIBRARY VIEW =========== -->
+  <div id="view-library" class="view hidden-view">
+
+    <!-- Stats strip -->
+    <section class="border-b-4 border-ink bg-yellow">
+      <div class="max-w-[1400px] mx-auto px-6 py-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 text-center">
+        <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Terms</div><div id="lib-stat-terms" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-red text-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest opacity-80">Verified</div><div id="lib-stat-verified" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-blue text-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest opacity-80">Confirmed</div><div id="lib-stat-confirmed" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Proposed</div><div id="lib-stat-proposed" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Speakers</div><div id="lib-stat-speakers" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Patterns</div><div id="lib-stat-patterns" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Negatives</div><div id="lib-stat-negatives" class="font-mono font-black text-lg">—</div></div>
+        <div class="border-2 border-ink bg-white px-2 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Sessions</div><div id="lib-stat-sessions" class="font-mono font-black text-lg">—</div></div>
+      </div>
+    </section>
+
+    <!-- Sub-tab nav -->
+    <nav class="border-b-4 border-ink bg-bg">
+      <div class="max-w-[1400px] mx-auto px-6 flex">
+        <button data-subtab="terms" class="lib-subtab bauhaus-press border-r-4 border-ink px-6 py-2 text-xs font-black uppercase tracking-widest bg-red text-white">Terms</button>
+        <button data-subtab="speakers" class="lib-subtab bauhaus-press border-r-4 border-ink px-6 py-2 text-xs font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Speakers</button>
+        <button data-subtab="patterns" class="lib-subtab bauhaus-press border-r-4 border-ink px-6 py-2 text-xs font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Edit patterns</button>
+      </div>
+    </nav>
+
+    <!-- TERMS SUB-VIEW -->
+    <section id="lib-terms-view" class="lib-subview max-w-[1400px] mx-auto px-6 py-6">
+      <div class="border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-ink text-white px-5 py-3 flex flex-wrap items-center gap-3">
+          <h2 class="font-black uppercase tracking-widest text-sm">Terms</h2>
+          <input id="terms-search" placeholder="Search canonical or alias…"
+            class="border-2 border-ink bg-white text-ink px-3 py-1 text-sm font-mono w-64 focus:outline-none focus:shadow-bauhaus-sm" />
+          <select id="terms-filter-type" class="border-2 border-ink bg-white text-ink px-2 py-1 text-xs font-bold uppercase tracking-widest">
+            <option value="">All types</option>
+            <option>company</option><option>product</option><option>person</option>
+            <option>acronym</option><option>jargon</option>
+          </select>
+          <select id="terms-filter-status" class="border-2 border-ink bg-white text-ink px-2 py-1 text-xs font-bold uppercase tracking-widest">
+            <option value="">All status</option>
+            <option>proposed</option><option>confirmed</option><option>verified</option>
+            <option>disputed</option><option>deprecated</option>
+          </select>
+          <input id="terms-filter-domain" placeholder="domain (e.g. ai-infra)"
+            class="border-2 border-ink bg-white text-ink px-2 py-1 text-xs w-40" />
+          <button id="terms-search-btn" class="bauhaus-press border-2 border-ink bg-blue text-white px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">Filter</button>
+          <button id="terms-add-btn" class="ml-auto bauhaus-press border-2 border-ink bg-yellow text-ink px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">+ Add term</button>
+        </header>
+
+        <!-- Add form (hidden by default) -->
+        <div id="terms-add-form" class="hidden border-b-4 border-ink p-4 bg-bg grid grid-cols-1 md:grid-cols-5 gap-3">
+          <input id="add-term-canonical" placeholder="Canonical (e.g. Dify)" class="md:col-span-2 border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <input id="add-term-aliases" placeholder="Aliases (comma-separated)" class="md:col-span-2 border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <select id="add-term-type" class="border-2 border-ink px-2 py-2 text-xs font-bold uppercase tracking-widest bg-white">
+            <option value="">type</option><option>company</option><option>product</option>
+            <option>person</option><option>acronym</option><option>jargon</option>
+          </select>
+          <input id="add-term-domain" placeholder="domain (optional)" class="border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <input id="add-term-definition" placeholder="definition (optional)" class="md:col-span-3 border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <button id="terms-add-submit" class="bauhaus-press border-2 border-ink bg-red text-white px-4 py-2 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">Save</button>
+        </div>
+
+        <div class="overflow-auto panel-scroll">
+          <table class="w-full text-sm">
+            <thead class="bg-bg border-b-4 border-ink">
+              <tr class="text-left">
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Status</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Canonical</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Aliases</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Type</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Domain</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Conf.</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Used</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest"></th>
+              </tr>
+            </thead>
+            <tbody id="terms-tbody" class="divide-y-2 divide-ink/10">
+              <tr><td colspan="8" class="text-center text-ink/40 py-8 italic">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPEAKERS SUB-VIEW -->
+    <section id="lib-speakers-view" class="lib-subview hidden-view max-w-[1400px] mx-auto px-6 py-6">
+      <div class="border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-ink text-white px-5 py-3 flex flex-wrap items-center gap-3">
+          <h2 class="font-black uppercase tracking-widest text-sm">Speakers</h2>
+          <input id="speakers-search" placeholder="Search name or alias…"
+            class="border-2 border-ink bg-white text-ink px-3 py-1 text-sm font-mono w-64 focus:outline-none focus:shadow-bauhaus-sm" />
+          <button id="speakers-search-btn" class="bauhaus-press border-2 border-ink bg-blue text-white px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">Search</button>
+          <button id="speakers-add-btn" class="ml-auto bauhaus-press border-2 border-ink bg-yellow text-ink px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">+ Add speaker</button>
+        </header>
+
+        <div id="speakers-add-form" class="hidden border-b-4 border-ink p-4 bg-bg grid grid-cols-1 md:grid-cols-5 gap-3">
+          <input id="add-speaker-name" placeholder="Canonical name (e.g. Eileen)" class="md:col-span-2 border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <input id="add-speaker-label" placeholder="Display label (e.g. Eileen：)" class="md:col-span-2 border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <select id="add-speaker-lang" class="border-2 border-ink px-2 py-2 text-xs font-bold uppercase tracking-widest bg-white">
+            <option value="">language</option><option value="zh">zh</option><option value="en">en</option><option value="mixed">mixed</option>
+          </select>
+          <input id="add-speaker-aliases" placeholder="Aliases (comma-separated)" class="md:col-span-4 border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <button id="speakers-add-submit" class="bauhaus-press border-2 border-ink bg-red text-white px-4 py-2 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">Save</button>
+        </div>
+
+        <div class="overflow-auto panel-scroll">
+          <table class="w-full text-sm">
+            <thead class="bg-bg border-b-4 border-ink">
+              <tr class="text-left">
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Canonical</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Label</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Aliases</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Lang</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest">Seen</th>
+                <th class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest"></th>
+              </tr>
+            </thead>
+            <tbody id="speakers-tbody" class="divide-y-2 divide-ink/10">
+              <tr><td colspan="6" class="text-center text-ink/40 py-8 italic">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PATTERNS SUB-VIEW -->
+    <section id="lib-patterns-view" class="lib-subview hidden-view max-w-[1400px] mx-auto px-6 py-6">
+      <div class="border-4 border-ink bg-white shadow-bauhaus-lg">
+        <header class="border-b-4 border-ink bg-ink text-white px-5 py-3 flex items-center gap-3">
+          <h2 class="font-black uppercase tracking-widest text-sm">Edit patterns</h2>
+          <button id="patterns-add-btn" class="ml-auto bauhaus-press border-2 border-ink bg-yellow text-ink px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">+ Add pattern</button>
+        </header>
+
+        <div id="patterns-add-form" class="hidden border-b-4 border-ink p-4 bg-bg grid grid-cols-1 gap-3">
+          <input id="add-pattern-title" placeholder="Title (short, descriptive)" class="border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <textarea id="add-pattern-trigger" rows="2" placeholder="Trigger: when this situation occurs in a transcript…" class="border-2 border-ink px-3 py-2 text-sm bg-white resize-none"></textarea>
+          <textarea id="add-pattern-action" rows="2" placeholder="Action: what to do — concrete, imperative" class="border-2 border-ink px-3 py-2 text-sm bg-white resize-none"></textarea>
+          <textarea id="add-pattern-rationale" rows="2" placeholder="Why (optional)" class="border-2 border-ink px-3 py-2 text-sm bg-white resize-none"></textarea>
+          <input id="add-pattern-domain" placeholder="domain (optional)" class="border-2 border-ink px-3 py-2 text-sm bg-white" />
+          <button id="patterns-add-submit" class="bauhaus-press self-start border-2 border-ink bg-red text-white px-4 py-2 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90">Save</button>
+        </div>
+
+        <div id="patterns-list" class="p-4 space-y-3">
+          <p class="text-center text-ink/40 italic py-4">Loading…</p>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <!-- =========== FOOTER =========== -->
   <footer class="border-t-4 border-ink bg-ink text-bg mt-8">
@@ -224,104 +381,113 @@
         <span class="inline-block w-3 h-3 bg-yellow border border-bg"></span>
         <span class="ml-2">No telemetry. No cloud. Your data stays here.</span>
       </div>
-      <div class="opacity-60">v0.0.2 · MIT · github.com/Chen17-sq/clearscript</div>
+      <div class="opacity-60">v0.0.3 · MIT · github.com/Chen17-sq/clearscript</div>
     </div>
   </footer>
 
   <!-- =========== APP LOGIC =========== -->
   <script>
     const $ = (id) => document.getElementById(id);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
     const state = {
-      providers: [],
-      defaultProvider: null,
-      selectedProvider: null,
-      lastResult: null,
+      providers: [], defaultProvider: null, selectedProvider: null,
+      lastResult: null, suggestions: [], selectedSuggestions: new Set(),
+      tab: 'editor', subtab: 'terms',
     };
 
+    // ============ Tabs ============
+    function setTab(name) {
+      state.tab = name;
+      $('view-editor').classList.toggle('hidden-view', name !== 'editor');
+      $('view-library').classList.toggle('hidden-view', name !== 'library');
+      $$('.tab-btn').forEach((btn) => {
+        const active = btn.dataset.tab === name;
+        btn.classList.toggle('bg-white', active);
+        btn.classList.toggle('text-ink', active);
+        btn.classList.toggle('bg-ink', !active);
+        btn.classList.toggle('text-white', !active);
+      });
+      window.location.hash = name;
+      if (name === 'library') {
+        loadLibStats();
+        loadActiveSubtab();
+      }
+    }
+    function setSubtab(name) {
+      state.subtab = name;
+      ['terms', 'speakers', 'patterns'].forEach((s) => {
+        $(`lib-${s}-view`).classList.toggle('hidden-view', s !== name);
+      });
+      $$('.lib-subtab').forEach((btn) => {
+        const active = btn.dataset.subtab === name;
+        btn.classList.toggle('bg-red', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-ink', !active);
+      });
+      loadActiveSubtab();
+    }
+    function loadActiveSubtab() {
+      if (state.subtab === 'terms') loadTerms();
+      else if (state.subtab === 'speakers') loadSpeakers();
+      else if (state.subtab === 'patterns') loadPatterns();
+    }
+
+    // ============ Status helper ============
     function setStatus(msg, kind = 'info') {
       const el = $('status');
       el.classList.remove('hidden', 'bg-red', 'bg-yellow', 'bg-blue', 'bg-white', 'text-white', 'text-ink');
-      const styleMap = {
-        info: ['bg-blue', 'text-white'],
-        warn: ['bg-yellow', 'text-ink'],
-        error: ['bg-red', 'text-white'],
-        ok: ['bg-white', 'text-ink'],
-      };
+      const styleMap = { info: ['bg-blue', 'text-white'], warn: ['bg-yellow', 'text-ink'], error: ['bg-red', 'text-white'], ok: ['bg-white', 'text-ink'] };
       styleMap[kind].forEach((c) => el.classList.add(c));
       el.textContent = msg;
     }
-
     function hideStatus() { $('status').classList.add('hidden'); }
 
+    // ============ Providers (Editor) ============
     function pillFor(p, isSelected) {
       const wrap = document.createElement('button');
       wrap.type = 'button';
       const baseClasses = 'bauhaus-press border-2 border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest shadow-bauhaus-sm transition-all';
-      if (isSelected) {
-        wrap.className = `${baseClasses} bg-ink text-white`;
-      } else if (!p.has_key) {
-        wrap.className = `${baseClasses} bg-white text-ink/40 cursor-not-allowed`;
-      } else {
-        wrap.className = `${baseClasses} bg-white text-ink hover:bg-yellow`;
-      }
+      if (isSelected) wrap.className = `${baseClasses} bg-ink text-white`;
+      else if (!p.has_key) wrap.className = `${baseClasses} bg-white text-ink/40 cursor-not-allowed`;
+      else wrap.className = `${baseClasses} bg-white text-ink hover:bg-yellow`;
       const dotColor = { anthropic: 'bg-red', openai: 'bg-blue', 'openai-compat': 'bg-blue', google: 'bg-yellow', ollama: 'bg-white border border-ink' }[p.type] || 'bg-ink';
       wrap.innerHTML = `<span class="inline-block w-2 h-2 ${dotColor} mr-2 align-middle"></span>${p.name}${p.has_key ? '' : ' ✗'}`;
       wrap.title = p.has_key ? `${p.type} · default: ${p.default_model || '(set in --model)'}` : `Set ${p.key_env} env var to enable`;
-      if (p.has_key) {
-        wrap.addEventListener('click', () => selectProvider(p.name));
-      }
+      if (p.has_key) wrap.addEventListener('click', () => selectProvider(p.name));
       return wrap;
     }
-
     function selectProvider(name) {
       state.selectedProvider = name;
       const p = state.providers.find((x) => x.name === name);
-      if (p && p.default_model) {
-        $('model-input').placeholder = p.default_model;
-      }
-      renderPills();
-      hideStatus();
+      if (p && p.default_model) $('model-input').placeholder = p.default_model;
+      renderPills(); hideStatus();
     }
-
     function renderPills() {
-      const container = $('provider-pills');
-      container.innerHTML = '';
-      state.providers.forEach((p) => {
-        container.appendChild(pillFor(p, p.name === state.selectedProvider));
-      });
+      const c = $('provider-pills'); c.innerHTML = '';
+      state.providers.forEach((p) => c.appendChild(pillFor(p, p.name === state.selectedProvider)));
     }
-
     async function loadProviders() {
       try {
-        const res = await fetch('/api/providers');
-        const data = await res.json();
-        state.providers = data.providers;
-        state.defaultProvider = data.default;
+        const data = await (await fetch('/api/providers')).json();
+        state.providers = data.providers; state.defaultProvider = data.default;
         const haveKey = state.providers.find((p) => p.has_key);
         state.selectedProvider = (haveKey && haveKey.name) || data.default;
         renderPills();
-        const firstReady = state.providers.find((p) => p.has_key);
-        if (!firstReady) {
-          setStatus('No provider has an API key set yet. Set one of: ' + state.providers.map((p) => p.key_env).filter(Boolean).join(' / '), 'warn');
-        }
-      } catch (e) {
-        setStatus('Failed to load providers: ' + e.message, 'error');
-      }
+        if (!haveKey) setStatus('No provider has an API key set yet. Set one of: ' + state.providers.map((p) => p.key_env).filter(Boolean).join(' / '), 'warn');
+      } catch (e) { setStatus('Failed to load providers: ' + e.message, 'error'); }
     }
 
     async function loadVersion() {
       try {
-        const res = await fetch('/api/health');
-        const data = await res.json();
+        const data = await (await fetch('/api/health')).json();
         $('version').textContent = 'v' + data.version;
-      } catch (e) {
-        $('version').textContent = 'offline';
-      }
+      } catch (e) { $('version').textContent = 'offline'; }
     }
 
     async function loadExample() {
-      const res = await fetch('/api/example');
-      const data = await res.json();
+      const data = await (await fetch('/api/example')).json();
       if (data.transcript) {
         $('transcript-input').value = data.transcript;
         updateInputMeta();
@@ -331,11 +497,9 @@
 
     function updateInputMeta() {
       const t = $('transcript-input').value;
-      const chars = t.length;
       const lines = t.split('\n').filter((l) => l.trim()).length;
-      $('input-meta').textContent = `${chars.toLocaleString()} chars · ${lines} lines`;
+      $('input-meta').textContent = `${t.length.toLocaleString()} chars · ${lines} lines`;
     }
-
     function setRunning(on) {
       const btn = $('run-btn');
       btn.disabled = on;
@@ -344,25 +508,18 @@
 
     async function runPipeline() {
       const transcript = $('transcript-input').value.trim();
-      if (!transcript) {
-        setStatus('Paste or upload a transcript first.', 'warn');
-        return;
-      }
-      if (!state.selectedProvider) {
-        setStatus('Pick a provider with an API key set.', 'warn');
-        return;
-      }
+      if (!transcript) { setStatus('Paste or upload a transcript first.', 'warn'); return; }
+      if (!state.selectedProvider) { setStatus('Pick a provider with an API key set.', 'warn'); return; }
 
-      hideStatus();
-      setRunning(true);
-      $('output-preview').textContent = 'Working… (this can take 10–60 seconds depending on transcript length and chosen model)';
+      hideStatus(); setRunning(true);
+      $('output-preview').textContent = 'Working… (this can take 10–60 seconds)';
       $('output-preview').classList.add('text-ink/40');
+      $('suggestions-panel').classList.add('hidden');
 
       const t0 = performance.now();
       try {
         const res = await fetch('/api/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             transcript,
             provider: state.selectedProvider,
@@ -381,14 +538,11 @@
         const data = await res.json();
         state.lastResult = data;
         renderResult(data, elapsed);
-        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes`, 'ok');
-      } catch (e) {
-        setStatus('Network error: ' + e.message, 'error');
-      } finally {
-        setRunning(false);
-      }
+        renderSuggestions(data.suggestions || []);
+        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${(data.suggestions || []).length} library suggestions`, 'ok');
+      } catch (e) { setStatus('Network error: ' + e.message, 'error'); }
+      finally { setRunning(false); }
     }
-
     function renderResult(data, elapsed) {
       $('output-preview').textContent = data.edited_markdown;
       $('output-preview').classList.remove('text-ink/40');
@@ -397,56 +551,96 @@
       $('stat-changes').textContent = data.change_log.length.toLocaleString();
       $('stat-time').textContent = elapsed + 's';
       $('changelog-count').textContent = `(${data.change_log.length})`;
-      $('changelog-pre').textContent = data.change_log.length
-        ? JSON.stringify(data.change_log, null, 2)
-        : '(no structured changes returned)';
+      $('changelog-pre').textContent = data.change_log.length ? JSON.stringify(data.change_log, null, 2) : '(no structured changes returned)';
       ['copy-btn', 'download-md-btn', 'download-docx-btn'].forEach((id) => { $(id).disabled = false; });
     }
 
-    function downloadBlob(blob, filename) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+    // ============ Mode B: Suggestions panel ============
+    function renderSuggestions(items) {
+      state.suggestions = items;
+      state.selectedSuggestions = new Set(items.map((_, i) => i));
+      $('suggestions-count').textContent = `(${items.length})`;
+      const list = $('suggestions-list');
+      list.innerHTML = '';
+      if (!items.length) { $('suggestions-panel').classList.add('hidden'); return; }
+      $('suggestions-panel').classList.remove('hidden');
+
+      items.forEach((s, i) => {
+        const row = document.createElement('label');
+        row.className = 'flex items-start gap-3 border-2 border-ink bg-white p-3 cursor-pointer hover:bg-bg';
+        const kindColor = { term: 'bg-red text-white', speaker: 'bg-blue text-white', edit_pattern: 'bg-yellow text-ink' }[s.kind] || 'bg-white text-ink';
+        const summary = s.kind === 'term'
+          ? `<b>${s.canonical || '?'}</b> ${s.aliases_seen?.length ? `← ${s.aliases_seen.join(', ')}` : ''}`
+          : s.kind === 'speaker'
+          ? `<b>${s.canonical_name || '?'}</b> as <code>${s.display_label || ''}</code> ${s.aliases_seen?.length ? `← ${s.aliases_seen.join(', ')}` : ''}`
+          : `<b>${s.title || '?'}</b>`;
+        row.innerHTML = `
+          <input type="checkbox" data-idx="${i}" class="suggestion-check mt-1" ${state.selectedSuggestions.has(i) ? 'checked' : ''} />
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="${kindColor} border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest">${s.kind}</span>
+              ${s.type ? `<span class="border-2 border-ink bg-white text-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest">${s.type}</span>` : ''}
+              ${s.domain ? `<span class="border-2 border-ink bg-bg text-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest">${s.domain}</span>` : ''}
+            </div>
+            <div class="text-sm">${summary}</div>
+            ${s.rationale ? `<div class="text-xs text-ink/60 mt-1 italic">${s.rationale}</div>` : ''}
+          </div>
+        `;
+        list.appendChild(row);
+      });
+      list.addEventListener('change', (e) => {
+        if (e.target.classList.contains('suggestion-check')) {
+          const i = parseInt(e.target.dataset.idx, 10);
+          if (e.target.checked) state.selectedSuggestions.add(i);
+          else state.selectedSuggestions.delete(i);
+        }
+      });
+    }
+    async function acceptSuggestions() {
+      const picked = Array.from(state.selectedSuggestions).map((i) => state.suggestions[i]);
+      if (!picked.length) return;
+      const res = await fetch('/api/library/accept-suggestions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestions: picked }),
+      });
+      if (!res.ok) { setStatus('Failed to accept: ' + res.statusText, 'error'); return; }
+      const data = await res.json();
+      const a = data.accepted;
+      setStatus(`Added to library — ${a.terms} terms · ${a.speakers} speakers · ${a.patterns} patterns (skipped ${a.skipped})`, 'ok');
+      $('suggestions-panel').classList.add('hidden');
+      loadLibStats();
     }
 
+    // ============ Download / copy ============
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
     async function downloadDocx() {
       if (!state.lastResult) return;
       const res = await fetch('/api/export/docx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markdown: state.lastResult.edited_markdown, title: $('title-input').value.trim() || null }),
       });
-      if (!res.ok) {
-        setStatus('docx export failed: ' + res.statusText, 'error');
-        return;
-      }
-      const blob = await res.blob();
-      downloadBlob(blob, 'clearscript-output.docx');
+      if (!res.ok) { setStatus('docx export failed: ' + res.statusText, 'error'); return; }
+      downloadBlob(await res.blob(), 'clearscript-output.docx');
     }
-
     function downloadMd() {
       if (!state.lastResult) return;
       const title = $('title-input').value.trim();
       const body = title ? `# ${title}\n\n${state.lastResult.edited_markdown}\n` : state.lastResult.edited_markdown + '\n';
       downloadBlob(new Blob([body], { type: 'text/markdown' }), 'clearscript-output.md');
     }
-
     async function copyMd() {
       if (!state.lastResult) return;
       try {
         await navigator.clipboard.writeText(state.lastResult.edited_markdown);
         setStatus('Markdown copied to clipboard.', 'ok');
         setTimeout(hideStatus, 2000);
-      } catch (e) {
-        setStatus('Copy failed: ' + e.message, 'error');
-      }
+      } catch (e) { setStatus('Copy failed: ' + e.message, 'error'); }
     }
-
     function clearAll() {
       $('transcript-input').value = '';
       $('output-preview').textContent = 'Cleaned transcript appears here after you click "Clean transcript".';
@@ -455,16 +649,208 @@
       $('changelog-count').textContent = '(0)';
       ['stat-in', 'stat-out', 'stat-changes', 'stat-time'].forEach((id) => { $(id).textContent = '—'; });
       ['copy-btn', 'download-md-btn', 'download-docx-btn'].forEach((id) => { $(id).disabled = true; });
+      $('suggestions-panel').classList.add('hidden');
       state.lastResult = null;
-      hideStatus();
-      updateInputMeta();
+      hideStatus(); updateInputMeta();
     }
 
-    // ============ wiring ============
+    // ============ Library: stats ============
+    async function loadLibStats() {
+      try {
+        const data = await (await fetch('/api/library/stats')).json();
+        $('lib-stat-terms').textContent = data.terms.toLocaleString();
+        $('lib-stat-verified').textContent = data.verified_terms.toLocaleString();
+        $('lib-stat-confirmed').textContent = data.confirmed_terms.toLocaleString();
+        $('lib-stat-proposed').textContent = data.proposed_terms.toLocaleString();
+        $('lib-stat-speakers').textContent = data.speakers.toLocaleString();
+        $('lib-stat-patterns').textContent = data.edit_patterns.toLocaleString();
+        $('lib-stat-negatives').textContent = data.negative_rules.toLocaleString();
+        $('lib-stat-sessions').textContent = data.sessions.toLocaleString();
+        $('lib-count-badge').textContent = data.terms + data.speakers + data.edit_patterns;
+      } catch (e) { console.error(e); }
+    }
+
+    // ============ Library: terms ============
+    async function loadTerms() {
+      const params = new URLSearchParams();
+      const search = $('terms-search').value.trim();
+      const type = $('terms-filter-type').value;
+      const status = $('terms-filter-status').value;
+      const domain = $('terms-filter-domain').value.trim();
+      if (search) params.set('search', search);
+      if (type) params.set('type', type);
+      if (status) params.set('status', status);
+      if (domain) params.set('domain', domain);
+      const data = await (await fetch('/api/library/terms?' + params)).json();
+      const tbody = $('terms-tbody');
+      if (!data.terms.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-ink/40 py-8 italic">No terms match. Add one via the button above, or run a transcript and let suggestions populate it.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      data.terms.forEach((t) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-bg';
+        tr.innerHTML = `
+          <td class="px-3 py-2"><span class="status-dot status-${t.status}"></span><span class="text-[10px] font-bold uppercase tracking-widest">${t.status}</span></td>
+          <td class="px-3 py-2 font-bold">${escapeHtml(t.canonical)}</td>
+          <td class="px-3 py-2 font-mono text-xs text-ink/70">${t.aliases.map(escapeHtml).join(', ') || '—'}</td>
+          <td class="px-3 py-2 text-xs">${t.type || '—'}</td>
+          <td class="px-3 py-2 text-xs">${t.domain || '—'}</td>
+          <td class="px-3 py-2 font-mono text-xs">${(t.confidence || 0).toFixed(2)}</td>
+          <td class="px-3 py-2 font-mono text-xs">${t.times_used}</td>
+          <td class="px-3 py-2"><button data-id="${t.id}" class="term-delete-btn text-xs text-red font-bold hover:underline">Delete</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      tbody.addEventListener('click', termTbodyClick, { once: true });
+    }
+    async function termTbodyClick(e) {
+      if (e.target.classList.contains('term-delete-btn')) {
+        const id = e.target.dataset.id;
+        if (!confirm(`Delete term ${id}?`)) { loadTerms(); return; }
+        await fetch(`/api/library/terms/${id}`, { method: 'DELETE' });
+        loadTerms(); loadLibStats();
+        return;
+      }
+      loadTerms();
+    }
+    async function addTerm() {
+      const canonical = $('add-term-canonical').value.trim();
+      if (!canonical) { alert('Canonical is required'); return; }
+      const body = {
+        canonical,
+        type: $('add-term-type').value || null,
+        domain: $('add-term-domain').value.trim() || null,
+        definition: $('add-term-definition').value.trim() || null,
+        aliases: $('add-term-aliases').value.split(',').map((s) => s.trim()).filter(Boolean),
+      };
+      const res = await fetch('/api/library/terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) { alert('Save failed: ' + res.statusText); return; }
+      ['add-term-canonical','add-term-aliases','add-term-domain','add-term-definition'].forEach((id) => $(id).value = '');
+      $('add-term-type').value = '';
+      $('terms-add-form').classList.add('hidden');
+      loadTerms(); loadLibStats();
+    }
+
+    // ============ Library: speakers ============
+    async function loadSpeakers() {
+      const params = new URLSearchParams();
+      const search = $('speakers-search').value.trim();
+      if (search) params.set('search', search);
+      const data = await (await fetch('/api/library/speakers?' + params)).json();
+      const tbody = $('speakers-tbody');
+      if (!data.speakers.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-ink/40 py-8 italic">No speakers yet. Add one or let pipeline harvest them.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      data.speakers.forEach((s) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-bg';
+        tr.innerHTML = `
+          <td class="px-3 py-2 font-bold">${escapeHtml(s.canonical_name)}</td>
+          <td class="px-3 py-2 font-mono text-xs">${escapeHtml(s.display_label)}</td>
+          <td class="px-3 py-2 font-mono text-xs text-ink/70">${s.aliases.map(escapeHtml).join(', ') || '—'}</td>
+          <td class="px-3 py-2 text-xs">${s.primary_language || '—'}</td>
+          <td class="px-3 py-2 font-mono text-xs">${s.times_seen}</td>
+          <td class="px-3 py-2"><button data-id="${s.id}" class="speaker-delete-btn text-xs text-red font-bold hover:underline">Delete</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      tbody.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('speaker-delete-btn')) {
+          if (!confirm('Delete this speaker?')) return;
+          await fetch(`/api/library/speakers/${e.target.dataset.id}`, { method: 'DELETE' });
+          loadSpeakers(); loadLibStats();
+        }
+      }, { once: true });
+    }
+    async function addSpeaker() {
+      const name = $('add-speaker-name').value.trim();
+      const label = $('add-speaker-label').value.trim();
+      if (!name || !label) { alert('Name and label are required'); return; }
+      const body = {
+        canonical_name: name,
+        display_label: label,
+        primary_language: $('add-speaker-lang').value || null,
+        aliases: $('add-speaker-aliases').value.split(',').map((s) => s.trim()).filter(Boolean),
+      };
+      const res = await fetch('/api/library/speakers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) { alert('Save failed: ' + res.statusText); return; }
+      ['add-speaker-name','add-speaker-label','add-speaker-aliases'].forEach((id) => $(id).value = '');
+      $('add-speaker-lang').value = '';
+      $('speakers-add-form').classList.add('hidden');
+      loadSpeakers(); loadLibStats();
+    }
+
+    // ============ Library: patterns ============
+    async function loadPatterns() {
+      const data = await (await fetch('/api/library/patterns')).json();
+      const list = $('patterns-list');
+      if (!data.patterns.length) {
+        list.innerHTML = '<p class="text-center text-ink/40 italic py-4">No patterns yet. Add one when you find a recurring editing decision worth remembering.</p>';
+        return;
+      }
+      list.innerHTML = '';
+      data.patterns.forEach((p) => {
+        const card = document.createElement('div');
+        card.className = 'border-2 border-ink p-3 bg-white';
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex-1">
+              <div class="font-bold uppercase tracking-widest text-xs mb-1">${escapeHtml(p.title || '(untitled)')} ${p.domain ? `<span class="ml-2 inline-block bg-yellow border-2 border-ink px-2 py-0.5 text-[10px]">${escapeHtml(p.domain)}</span>` : ''}</div>
+              <div class="text-xs text-ink/60 mb-1"><b>Trigger:</b> ${escapeHtml(p.trigger_desc || '')}</div>
+              <div class="text-xs text-ink/60 mb-1"><b>Action:</b> ${escapeHtml(p.action || '')}</div>
+              ${p.rationale ? `<div class="text-xs text-ink/60 italic"><b>Why:</b> ${escapeHtml(p.rationale)}</div>` : ''}
+              <div class="text-[10px] text-ink/40 mt-2">confirmed ${p.confirmed_count} time(s)</div>
+            </div>
+            <button data-id="${p.id}" class="pattern-delete-btn text-xs text-red font-bold hover:underline">Delete</button>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+      list.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('pattern-delete-btn')) {
+          if (!confirm('Delete this pattern?')) return;
+          await fetch(`/api/library/patterns/${e.target.dataset.id}`, { method: 'DELETE' });
+          loadPatterns(); loadLibStats();
+        }
+      }, { once: true });
+    }
+    async function addPattern() {
+      const title = $('add-pattern-title').value.trim();
+      const trig = $('add-pattern-trigger').value.trim();
+      const action = $('add-pattern-action').value.trim();
+      if (!title || !trig || !action) { alert('Title, trigger, and action are required'); return; }
+      const body = {
+        title, trigger_desc: trig, action,
+        rationale: $('add-pattern-rationale').value.trim() || null,
+        domain: $('add-pattern-domain').value.trim() || null,
+      };
+      const res = await fetch('/api/library/patterns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) { alert('Save failed: ' + res.statusText); return; }
+      ['add-pattern-title','add-pattern-trigger','add-pattern-action','add-pattern-rationale','add-pattern-domain'].forEach((id) => $(id).value = '');
+      $('patterns-add-form').classList.add('hidden');
+      loadPatterns(); loadLibStats();
+    }
+
+    // ============ Helpers ============
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ============ Wiring ============
     document.addEventListener('DOMContentLoaded', () => {
       loadVersion();
       loadProviders();
+      loadLibStats();
 
+      $$('.tab-btn').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+      $$('.lib-subtab').forEach((b) => b.addEventListener('click', () => setSubtab(b.dataset.subtab)));
+
+      // Editor
       $('transcript-input').addEventListener('input', updateInputMeta);
       $('run-btn').addEventListener('click', runPipeline);
       $('clear-btn').addEventListener('click', clearAll);
@@ -473,33 +859,52 @@
       $('download-md-btn').addEventListener('click', downloadMd);
       $('download-docx-btn').addEventListener('click', downloadDocx);
 
-      // file upload
       $('drop-zone').addEventListener('click', () => $('file-input').click());
       $('file-input').addEventListener('change', (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => { $('transcript-input').value = reader.result; updateInputMeta(); };
-        reader.readAsText(f);
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader(); r.onload = () => { $('transcript-input').value = r.result; updateInputMeta(); }; r.readAsText(f);
       });
       ['dragover', 'dragenter'].forEach((evt) => $('drop-zone').addEventListener(evt, (e) => { e.preventDefault(); $('drop-zone').classList.add('bg-yellow'); }));
       ['dragleave', 'drop'].forEach((evt) => $('drop-zone').addEventListener(evt, (e) => { e.preventDefault(); $('drop-zone').classList.remove('bg-yellow'); }));
       $('drop-zone').addEventListener('drop', (e) => {
         e.preventDefault();
-        const f = e.dataTransfer.files[0];
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => { $('transcript-input').value = reader.result; updateInputMeta(); };
-        reader.readAsText(f);
+        const f = e.dataTransfer.files[0]; if (!f) return;
+        const r = new FileReader(); r.onload = () => { $('transcript-input').value = r.result; updateInputMeta(); }; r.readAsText(f);
+      });
+      $('transcript-input').addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runPipeline(); }
       });
 
-      // keyboard: cmd/ctrl+enter to run
-      $('transcript-input').addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-          e.preventDefault();
-          runPipeline();
-        }
+      // Suggestions
+      $('suggestion-select-all').addEventListener('click', () => {
+        const all = state.suggestions.length;
+        if (state.selectedSuggestions.size === all) state.selectedSuggestions.clear();
+        else state.suggestions.forEach((_, i) => state.selectedSuggestions.add(i));
+        renderSuggestions(state.suggestions);
       });
+      $('suggestion-accept').addEventListener('click', acceptSuggestions);
+      $('suggestion-dismiss').addEventListener('click', () => { $('suggestions-panel').classList.add('hidden'); });
+
+      // Library: terms
+      $('terms-search-btn').addEventListener('click', loadTerms);
+      $('terms-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadTerms(); });
+      $('terms-add-btn').addEventListener('click', () => $('terms-add-form').classList.toggle('hidden'));
+      $('terms-add-submit').addEventListener('click', addTerm);
+
+      // Library: speakers
+      $('speakers-search-btn').addEventListener('click', loadSpeakers);
+      $('speakers-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadSpeakers(); });
+      $('speakers-add-btn').addEventListener('click', () => $('speakers-add-form').classList.toggle('hidden'));
+      $('speakers-add-submit').addEventListener('click', addSpeaker);
+
+      // Library: patterns
+      $('patterns-add-btn').addEventListener('click', () => $('patterns-add-form').classList.toggle('hidden'));
+      $('patterns-add-submit').addEventListener('click', addPattern);
+
+      // Initial tab from hash
+      const initial = window.location.hash.replace('#', '') || 'editor';
+      setTab(initial === 'library' ? 'library' : 'editor');
+      setSubtab('terms');
     });
   </script>
 </body>

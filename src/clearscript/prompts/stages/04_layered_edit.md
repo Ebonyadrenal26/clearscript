@@ -24,10 +24,25 @@ The detailed rules for each layer are loaded from `layers/l*.md` and provided al
 
 ## Output format
 
-Return TWO things, separated by a JSON delimiter line `---CHANGELOG---`:
+Return THREE sections, separated by JSON delimiter lines `---CHANGELOG---` and `---SUGGESTIONS---`:
 
-1. **The edited markdown transcript** (above the delimiter)
-2. **A JSON change log** (below the delimiter) listing every meaningful edit:
+1. **The edited markdown transcript** (above the first delimiter)
+2. **A JSON change log** (between the delimiters) listing every meaningful edit
+3. **A JSON list of library suggestions** (after the second delimiter) — entries you think the user should add to their terminology library so the next session is sharper. Empty list `[]` if none.
+
+Example layout:
+
+```
+<edited markdown here>
+
+---CHANGELOG---
+[ ...changes... ]
+
+---SUGGESTIONS---
+[ ...suggested library additions... ]
+```
+
+The change log entries look like this:
 
 ```json
 [
@@ -63,9 +78,46 @@ Return TWO things, separated by a JSON delimiter line `---CHANGELOG---`:
 ]
 ```
 
+The library-suggestion entries look like this:
+
+```json
+[
+  {
+    "kind": "term",
+    "canonical": "PingCAP",
+    "type": "company",
+    "domain": "ai-infra",
+    "aliases_seen": ["PinkCup", "PingCup"],
+    "rationale": "Database company referenced multiple times; ASR consistently mishears the name."
+  },
+  {
+    "kind": "speaker",
+    "canonical_name": "Eileen",
+    "display_label": "Eileen：",
+    "aliases_seen": ["Speaker 2", "阿丽"],
+    "rationale": "User briefing introduced as the founder; recurring across turns."
+  },
+  {
+    "kind": "edit_pattern",
+    "title": "Preserve approximate-number phrasing",
+    "trigger_desc": "When the speaker says ranges like '差不多三四百人'",
+    "action": "Keep the original phrasing; do not standardize to a single precise number.",
+    "rationale": "Approximate phrasing carries the speaker's uncertainty signal."
+  }
+]
+```
+
+Suggestion rules:
+
+- **Only suggest things you saw in this chunk.** No generic industry knowledge.
+- **Skip if already in the provided library context.** Don't propose duplicates.
+- **Be conservative.** Better to suggest 3 high-quality entries than 30 noisy ones.
+- **`kind` must be one of**: `term`, `speaker`, `edit_pattern`.
+
 ## Discipline
 
 - **Never silently rewrite for fluency.** If a sentence is broken, either fix it with high confidence (and log) or flag it (and refuse to fix).
 - **Every edit must appear in the change log.** Trivial whitespace cleanup excepted.
 - **Track uncertainties separately.** Items with `needs_user_review: true` will be batched for the user in Stage 7.
 - **Do not modify the original speaker order or question/answer sequence.**
+- **Always emit all three sections**, even if changelog or suggestions are empty (use `[]`).
