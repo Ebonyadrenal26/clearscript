@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="clearscript social preview">
+  <title>clearscript</title>
+
+  <defs>
+    <pattern id="dotgrid" x="0" y="0" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.6" fill="#121212" opacity="0.07"/>
+    </pattern>
+  </defs>
+
+  <!-- Canvas + dot grid -->
+  <rect width="1280" height="640" fill="#F0F0F0"/>
+  <rect width="1280" height="640" fill="url(#dotgrid)"/>
+
+  <!-- Outer thick border -->
+  <rect x="8" y="8" width="1264" height="624" fill="none" stroke="#121212" stroke-width="14"/>
+
+  <!-- ============ LEFT BLOCK: wordmark + meta ============ -->
+  <g font-family="'Inter', 'Helvetica Neue', system-ui, sans-serif">
+
+    <!-- WORDMARK: huge -->
+    <text x="80" y="240" font-size="160" font-weight="900" fill="#121212" letter-spacing="-6">clearscript</text>
+
+    <!-- Heavy underline -->
+    <line x1="80" y1="276" x2="660" y2="276" stroke="#121212" stroke-width="10"/>
+
+    <!-- Tagline (tracked uppercase) -->
+    <text x="80" y="324" font-size="26" font-weight="800" fill="#121212" letter-spacing="4">LOCAL-FIRST  ·  BRING YOUR OWN MODEL</text>
+
+    <!-- Subline -->
+    <text x="80" y="378" font-size="28" font-weight="600" fill="#121212">An ASR transcript editor that gets sharper</text>
+    <text x="80" y="416" font-size="28" font-weight="600" fill="#121212">with every use.</text>
+
+    <!-- Four colored tag pills -->
+    <g transform="translate(80 466)">
+      <!-- Red -->
+      <rect x="6" y="6" width="142" height="46" fill="#121212"/>
+      <rect x="0" y="0" width="142" height="46" fill="#D02020" stroke="#121212" stroke-width="4"/>
+      <text x="71" y="31" font-size="16" font-weight="800" fill="#FFFFFF" text-anchor="middle" letter-spacing="3">PYTHON</text>
+
+      <!-- Blue -->
+      <rect x="166" y="6" width="142" height="46" fill="#121212"/>
+      <rect x="160" y="0" width="142" height="46" fill="#1040C0" stroke="#121212" stroke-width="4"/>
+      <text x="231" y="31" font-size="16" font-weight="800" fill="#FFFFFF" text-anchor="middle" letter-spacing="3">SVELTEKIT</text>
+
+      <!-- Yellow -->
+      <rect x="326" y="6" width="142" height="46" fill="#121212"/>
+      <rect x="320" y="0" width="142" height="46" fill="#F0C020" stroke="#121212" stroke-width="4"/>
+      <text x="391" y="31" font-size="16" font-weight="800" fill="#121212" text-anchor="middle" letter-spacing="3">SQLITE</text>
+
+      <!-- White -->
+      <rect x="486" y="6" width="100" height="46" fill="#121212"/>
+      <rect x="480" y="0" width="100" height="46" fill="#FFFFFF" stroke="#121212" stroke-width="4"/>
+      <text x="530" y="31" font-size="16" font-weight="800" fill="#121212" text-anchor="middle" letter-spacing="3">MIT</text>
+    </g>
+
+    <!-- Repo URL footer -->
+    <text x="80" y="582" font-size="22" font-weight="700" fill="#121212" letter-spacing="2">github.com/Chen17-sq/clearscript</text>
+  </g>
+
+  <!-- ============ RIGHT BLOCK: bauhaus geometric composition ============ -->
+  <g transform="translate(740 80)">
+
+    <!-- Yellow triangle (back layer) — large -->
+    <polygon points="160,452 488,452 324,108" fill="#121212"/>
+    <polygon points="148,440 476,440 312,96" fill="#F0C020" stroke="#121212" stroke-width="9"/>
+
+    <!-- Blue rotated square (middle layer) -->
+    <g transform="translate(380 308) rotate(45)">
+      <rect x="-126" y="-114" width="252" height="252" fill="#121212"/>
+    </g>
+    <g transform="translate(368 296) rotate(45)">
+      <rect x="-126" y="-126" width="252" height="252" fill="#1040C0" stroke="#121212" stroke-width="9"/>
+    </g>
+
+    <!-- Red circle (front layer) -->
+    <circle cx="184" cy="334" r="130" fill="#121212"/>
+    <circle cx="172" cy="322" r="130" fill="#D02020" stroke="#121212" stroke-width="9"/>
+
+    <!-- Small white square inside red circle -->
+    <rect x="148" y="296" width="44" height="44" fill="#FFFFFF" stroke="#121212" stroke-width="5"/>
+  </g>
+
+  <!-- ============ Corner accents ============ -->
+  <!-- Top-right yellow square -->
+  <rect x="1192" y="36" width="56" height="56" fill="#121212"/>
+  <rect x="1184" y="28" width="56" height="56" fill="#F0C020" stroke="#121212" stroke-width="6"/>
+
+  <!-- Bottom-right blue circle -->
+  <circle cx="1216" cy="586" r="22" fill="#121212"/>
+  <circle cx="1208" cy="578" r="22" fill="#1040C0" stroke="#121212" stroke-width="6"/>
+
+  <!-- Top-left small red square -->
+  <rect x="44" y="40" width="20" height="20" fill="#D02020" stroke="#121212" stroke-width="3"/>
+</svg>
