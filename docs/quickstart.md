@@ -5,7 +5,7 @@ Five-minute path from "I have an ASR transcript" to "I have a cleaned deliverabl
 ## 1. Install
 
 ```bash
-git clone https://github.com/Chensiqi17/clearscript.git
+git clone https://github.com/Chen17-sq/clearscript.git
 cd clearscript
 uv sync
 export ANTHROPIC_API_KEY=sk-ant-...   # or your provider of choice

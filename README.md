@@ -87,7 +87,7 @@ Editing happens in named layers (speaker normalization → trimming → ASR erro
 > Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/Chensiqi17/clearscript.git
+git clone https://github.com/Chen17-sq/clearscript.git
 cd clearscript
 uv sync
 export ANTHROPIC_API_KEY=sk-ant-...

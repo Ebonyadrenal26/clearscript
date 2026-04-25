@@ -80,10 +80,10 @@ clearscript = "clearscript.cli:app"
 cs = "clearscript.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/Chensiqi17/clearscript"
-Repository = "https://github.com/Chensiqi17/clearscript"
-Issues = "https://github.com/Chensiqi17/clearscript/issues"
-Changelog = "https://github.com/Chensiqi17/clearscript/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/Chen17-sq/clearscript"
+Repository = "https://github.com/Chen17-sq/clearscript"
+Issues = "https://github.com/Chen17-sq/clearscript/issues"
+Changelog = "https://github.com/Chen17-sq/clearscript/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

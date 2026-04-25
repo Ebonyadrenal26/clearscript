@@ -35,7 +35,7 @@ Domain packs let users share curated terminology bundles. Once the pack system s
 #### Setting up
 
 ```bash
-git clone https://github.com/Chensiqi17/clearscript.git
+git clone https://github.com/Chen17-sq/clearscript.git
 cd clearscript
 uv sync --extra dev
 uv run pytest

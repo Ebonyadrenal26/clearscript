@@ -87,7 +87,7 @@ base_url = "https://abc-123.ngrok.io/v1"
 > 需要 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-git clone https://github.com/Chensiqi17/clearscript.git
+git clone https://github.com/Chen17-sq/clearscript.git
 cd clearscript
 uv sync
 export ANTHROPIC_API_KEY=sk-ant-...

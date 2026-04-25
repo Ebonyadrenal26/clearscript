@@ -9,7 +9,7 @@
 ## Install via uv (recommended for developers)
 
 ```bash
-git clone https://github.com/Chensiqi17/clearscript.git
+git clone https://github.com/Chen17-sq/clearscript.git
 cd clearscript
 uv sync
 ```
@@ -23,7 +23,7 @@ uv run clearscript --help
 ## Install via pipx (recommended for end users)
 
 ```bash
-pipx install git+https://github.com/Chensiqi17/clearscript.git
+pipx install git+https://github.com/Chen17-sq/clearscript.git
 clearscript --help
 ```
 
