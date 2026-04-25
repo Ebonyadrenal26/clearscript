@@ -1,6 +1,6 @@
 [project]
 name = "clearscript"
-version = "0.0.3"
+version = "0.0.4"
 description = "Local-first ASR transcript editor with a compounding terminology library. Bring your own model."
 readme = "README.md"
 license = { text = "MIT" }
@@ -47,6 +47,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "websockets>=12.0",
+    "python-multipart>=0.0.9",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.2.0",
     "srt>=3.5.3",

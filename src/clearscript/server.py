@@ -15,7 +15,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
@@ -23,15 +23,30 @@ from clearscript import __version__
 from clearscript.config import Config, ensure_dirs, load_config
 from clearscript.core.pipeline import Pipeline
 from clearscript.export import write_docx
+from clearscript.ingest import parse as parse_path
+from clearscript.ingest import supported_extensions
+from clearscript.ingest.json_ingest import JsonAdapter
+from clearscript.ingest.md import MdAdapter
+from clearscript.ingest.srt import SrtAdapter
 from clearscript.ingest.txt import TxtAdapter
+from clearscript.ingest.vtt import VttAdapter
 from clearscript.library import Library
 from clearscript.providers import build_provider
+
+_FORMAT_ADAPTERS = {
+    "txt": TxtAdapter,
+    "md": MdAdapter,
+    "srt": SrtAdapter,
+    "vtt": VttAdapter,
+    "json": JsonAdapter,
+}
 
 # ============ Request/response models (module-level so FastAPI can introspect) ============
 
 
 class RunRequest(BaseModel):
     transcript: str
+    format: str | None = None  # txt / md / srt / vtt / json — drives parser choice
     provider: str | None = None
     model: str | None = None
     title: str | None = None
@@ -116,9 +131,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
-        html = (
-            resources.files("clearscript.web").joinpath("index.html").read_text(encoding="utf-8")
-        )
+        html = resources.files("clearscript.web").joinpath("index.html").read_text(encoding="utf-8")
         return HTMLResponse(html)
 
     @app.get("/api/health")
@@ -143,18 +156,16 @@ def create_app() -> FastAPI:
             ],
         }
 
-    @app.post("/api/run", response_model=RunResponse)
-    def run_pipeline(req: RunRequest) -> RunResponse:
-        if not req.transcript.strip():
-            raise HTTPException(400, "Transcript is empty.")
-
+    def _resolve_pipeline_pieces(
+        provider_name: str | None, model_name: str | None
+    ) -> tuple[object, str]:
         c = cfg()
         try:
-            provider_cfg = c.get_provider(req.provider)
+            provider_cfg = c.get_provider(provider_name)
         except KeyError as exc:
             raise HTTPException(400, str(exc)) from exc
 
-        chosen_model = req.model or provider_cfg.default_model
+        chosen_model = model_name or provider_cfg.default_model
         if not chosen_model:
             raise HTTPException(
                 400,
@@ -166,20 +177,19 @@ def create_app() -> FastAPI:
             llm = build_provider(provider_cfg)
         except RuntimeError as exc:
             raise HTTPException(400, str(exc)) from exc
+        return llm, chosen_model
 
-        adapter = TxtAdapter()
-        transcript = adapter.parse_string(req.transcript)
-
+    def _run_with_transcript(transcript_obj, llm, chosen_model: str, briefing: str) -> RunResponse:
         library = open_library()
         try:
             pipeline = Pipeline(
                 provider=llm,
                 model=chosen_model,
                 library=library,
-                briefing_context=req.briefing or "",
+                briefing_context=briefing or "",
             )
             try:
-                result = pipeline.run_on_transcript(transcript)
+                result = pipeline.run_on_transcript(transcript_obj)
             except Exception as exc:
                 raise HTTPException(500, f"Pipeline error: {exc}") from exc
         finally:
@@ -194,6 +204,61 @@ def create_app() -> FastAPI:
             model=result.model,
             provider=result.provider,
         )
+
+    @app.post("/api/run", response_model=RunResponse)
+    def run_pipeline(req: RunRequest) -> RunResponse:
+        if not req.transcript.strip():
+            raise HTTPException(400, "Transcript is empty.")
+
+        llm, chosen_model = _resolve_pipeline_pieces(req.provider, req.model)
+
+        fmt = (req.format or "txt").lower()
+        adapter_cls = _FORMAT_ADAPTERS.get(fmt, TxtAdapter)
+        try:
+            transcript_obj = adapter_cls().parse_string(req.transcript)
+        except ValueError as exc:
+            raise HTTPException(400, f"Failed to parse {fmt!r}: {exc}") from exc
+
+        return _run_with_transcript(transcript_obj, llm, chosen_model, req.briefing or "")
+
+    @app.post("/api/run-file", response_model=RunResponse)
+    async def run_pipeline_file(
+        file: UploadFile = File(...),
+        provider: str | None = Form(None),
+        model: str | None = Form(None),
+        title: str | None = Form(None),
+        briefing: str | None = Form(None),
+    ) -> RunResponse:
+        """Run on an uploaded file (used for binary formats like .docx)."""
+        if not file.filename:
+            raise HTTPException(400, "Missing filename")
+
+        suffix = Path(file.filename).suffix or ".bin"
+        if suffix.lower() not in supported_extensions():
+            raise HTTPException(
+                400,
+                f"Unsupported file type {suffix}. Supported: {', '.join(supported_extensions())}",
+            )
+
+        llm, chosen_model = _resolve_pipeline_pieces(provider, model)
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(await file.read())
+
+        try:
+            try:
+                transcript_obj = parse_path(tmp_path)
+            except ValueError as exc:
+                raise HTTPException(400, f"Failed to parse {suffix}: {exc}") from exc
+            return _run_with_transcript(transcript_obj, llm, chosen_model, briefing or "")
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                tmp_path.unlink()
+
+    @app.get("/api/supported-formats")
+    def get_supported_formats() -> dict:
+        return {"extensions": supported_extensions()}
 
     @app.post("/api/export/docx")
     def export_docx(req: ExportRequest) -> Response:

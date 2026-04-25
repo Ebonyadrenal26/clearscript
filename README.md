@@ -124,7 +124,18 @@ uv run clearscript run input.txt --provider ollama --model qwen2.5:14b
 
 ## Status
 
-> **v0.0.1 — pre-alpha.** The repository scaffolds the architecture and ships a minimal end-to-end happy path (`txt` in → LLM → `md`/`docx` out). Full v0.1 plan: see [ROADMAP](./docs/ROADMAP.md).
+> **v0.0.4 — pre-alpha.** Local web UI ships a Bauhaus-styled Editor + Library tabs; multi-format ingest (`.txt / .md / .docx / .srt / .vtt / .json`); compounding terminology library with Mode A activation and Mode B harvest. Full v0.1 plan: see [ROADMAP](./docs/ROADMAP.md).
+
+### Supported input formats today
+
+| Format | Source examples |
+|---|---|
+| `.txt` | Generic, with speaker-label heuristics |
+| `.md` | Auto-strips AI-summary blocks (English + Chinese) |
+| `.docx` | 飞书妙记 / 腾讯会议 / 通义听悟 / generic Word |
+| `.srt` | SubRip subtitle, time-stamped |
+| `.vtt` | WebVTT (honors `<v Speaker>` voice tags) |
+| `.json` | OpenAI Whisper / PLAUD / Google STT / Deepgram / generic flat list |
 
 <table>
 <tr>

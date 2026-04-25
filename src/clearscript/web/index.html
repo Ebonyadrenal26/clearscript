@@ -134,8 +134,14 @@
         <div class="p-5">
           <div id="drop-zone"
             class="border-2 border-dashed border-ink/40 px-4 py-3 mb-3 text-center text-xs font-bold uppercase tracking-widest text-ink/70 cursor-pointer">
-            Drop a .txt file here · or click to upload · or paste below
-            <input type="file" id="file-input" accept=".txt,.md" class="hidden" />
+            Drop a transcript file · or click to upload · or paste below
+            <div class="text-[10px] font-mono text-ink/50 mt-1 normal-case tracking-normal">supported: .txt · .md · .docx · .srt · .vtt · .json</div>
+            <input type="file" id="file-input" accept=".txt,.md,.markdown,.docx,.srt,.vtt,.json" class="hidden" />
+          </div>
+          <div id="file-badge" class="hidden mb-3 border-2 border-ink bg-yellow px-3 py-2 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <span>📎</span>
+            <span id="file-badge-name" class="font-mono normal-case tracking-normal">filename</span>
+            <button id="file-badge-clear" class="ml-auto text-ink/60 hover:text-ink">×</button>
           </div>
 
           <textarea id="transcript-input"
@@ -394,7 +400,20 @@
       providers: [], defaultProvider: null, selectedProvider: null,
       lastResult: null, suggestions: [], selectedSuggestions: new Set(),
       tab: 'editor', subtab: 'terms',
+      pendingFile: null,            // File object for binary uploads (e.g. .docx)
+      pendingFormat: null,          // "md" / "srt" / "vtt" / "json" / "docx" / "txt"
     };
+
+    const TEXT_FORMATS = new Set(['txt', 'md', 'srt', 'vtt', 'json']);
+    const BINARY_FORMATS = new Set(['docx']);
+
+    function extToFormat(filename) {
+      const m = filename.toLowerCase().match(/\.([^.]+)$/);
+      if (!m) return 'txt';
+      const ext = m[1];
+      if (ext === 'markdown') return 'md';
+      return ext;
+    }
 
     // ============ Tabs ============
     function setTab(name) {
@@ -498,7 +517,51 @@
     function updateInputMeta() {
       const t = $('transcript-input').value;
       const lines = t.split('\n').filter((l) => l.trim()).length;
-      $('input-meta').textContent = `${t.length.toLocaleString()} chars · ${lines} lines`;
+      const fmtLabel = state.pendingFile
+        ? `📎 ${state.pendingFormat.toUpperCase()} file pending`
+        : (state.pendingFormat ? `format: ${state.pendingFormat}` : '');
+      const left = `${t.length.toLocaleString()} chars · ${lines} lines`;
+      $('input-meta').textContent = fmtLabel ? `${left} · ${fmtLabel}` : left;
+    }
+
+    function setPendingFile(file) {
+      state.pendingFile = file;
+      const fmt = extToFormat(file.name);
+      state.pendingFormat = fmt;
+      $('file-badge').classList.remove('hidden');
+      $('file-badge-name').textContent = `${file.name}  ·  ${(file.size / 1024).toFixed(1)} KB  ·  format: ${fmt}`;
+      // For binary formats we can't show content; clear textarea and disable it.
+      if (BINARY_FORMATS.has(fmt)) {
+        $('transcript-input').value = `(binary ${fmt} file uploaded — click "Clean transcript" to process)`;
+        $('transcript-input').disabled = true;
+      }
+      updateInputMeta();
+    }
+
+    function clearPendingFile() {
+      state.pendingFile = null;
+      state.pendingFormat = null;
+      $('file-badge').classList.add('hidden');
+      $('file-badge-name').textContent = '';
+      $('transcript-input').disabled = false;
+      $('transcript-input').value = '';
+      updateInputMeta();
+    }
+
+    function ingestFile(f) {
+      const fmt = extToFormat(f.name);
+      if (BINARY_FORMATS.has(fmt)) {
+        setPendingFile(f);
+        return;
+      }
+      // Text format: read and populate textarea, also remember pending file in case user wants raw upload
+      state.pendingFile = f;
+      state.pendingFormat = fmt;
+      $('file-badge').classList.remove('hidden');
+      $('file-badge-name').textContent = `${f.name}  ·  ${(f.size / 1024).toFixed(1)} KB  ·  format: ${fmt}`;
+      const r = new FileReader();
+      r.onload = () => { $('transcript-input').value = r.result; updateInputMeta(); };
+      r.readAsText(f);
     }
     function setRunning(on) {
       const btn = $('run-btn');
@@ -507,8 +570,9 @@
     }
 
     async function runPipeline() {
+      const usingBinaryUpload = state.pendingFile && BINARY_FORMATS.has(state.pendingFormat);
       const transcript = $('transcript-input').value.trim();
-      if (!transcript) { setStatus('Paste or upload a transcript first.', 'warn'); return; }
+      if (!usingBinaryUpload && !transcript) { setStatus('Paste or upload a transcript first.', 'warn'); return; }
       if (!state.selectedProvider) { setStatus('Pick a provider with an API key set.', 'warn'); return; }
 
       hideStatus(); setRunning(true);
@@ -518,16 +582,31 @@
 
       const t0 = performance.now();
       try {
-        const res = await fetch('/api/run', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transcript,
-            provider: state.selectedProvider,
-            model: $('model-input').value.trim() || null,
-            title: $('title-input').value.trim() || null,
-            briefing: $('briefing-input').value.trim() || null,
-          }),
-        });
+        let res;
+        if (usingBinaryUpload) {
+          const fd = new FormData();
+          fd.append('file', state.pendingFile);
+          if (state.selectedProvider) fd.append('provider', state.selectedProvider);
+          const m = $('model-input').value.trim();
+          if (m) fd.append('model', m);
+          const t = $('title-input').value.trim();
+          if (t) fd.append('title', t);
+          const b = $('briefing-input').value.trim();
+          if (b) fd.append('briefing', b);
+          res = await fetch('/api/run-file', { method: 'POST', body: fd });
+        } else {
+          res = await fetch('/api/run', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              transcript,
+              format: state.pendingFormat || 'txt',
+              provider: state.selectedProvider,
+              model: $('model-input').value.trim() || null,
+              title: $('title-input').value.trim() || null,
+              briefing: $('briefing-input').value.trim() || null,
+            }),
+          });
+        }
         const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -643,6 +722,7 @@
     }
     function clearAll() {
       $('transcript-input').value = '';
+      $('transcript-input').disabled = false;
       $('output-preview').textContent = 'Cleaned transcript appears here after you click "Clean transcript".';
       $('output-preview').classList.add('text-ink/40');
       $('changelog-pre').textContent = '';
@@ -651,6 +731,9 @@
       ['copy-btn', 'download-md-btn', 'download-docx-btn'].forEach((id) => { $(id).disabled = true; });
       $('suggestions-panel').classList.add('hidden');
       state.lastResult = null;
+      state.pendingFile = null;
+      state.pendingFormat = null;
+      $('file-badge').classList.add('hidden');
       hideStatus(); updateInputMeta();
     }
 
@@ -862,15 +945,16 @@
       $('drop-zone').addEventListener('click', () => $('file-input').click());
       $('file-input').addEventListener('change', (e) => {
         const f = e.target.files[0]; if (!f) return;
-        const r = new FileReader(); r.onload = () => { $('transcript-input').value = r.result; updateInputMeta(); }; r.readAsText(f);
+        ingestFile(f);
       });
       ['dragover', 'dragenter'].forEach((evt) => $('drop-zone').addEventListener(evt, (e) => { e.preventDefault(); $('drop-zone').classList.add('bg-yellow'); }));
       ['dragleave', 'drop'].forEach((evt) => $('drop-zone').addEventListener(evt, (e) => { e.preventDefault(); $('drop-zone').classList.remove('bg-yellow'); }));
       $('drop-zone').addEventListener('drop', (e) => {
         e.preventDefault();
         const f = e.dataTransfer.files[0]; if (!f) return;
-        const r = new FileReader(); r.onload = () => { $('transcript-input').value = r.result; updateInputMeta(); }; r.readAsText(f);
+        ingestFile(f);
       });
+      $('file-badge-clear').addEventListener('click', clearPendingFile);
       $('transcript-input').addEventListener('keydown', (e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runPipeline(); }
       });
