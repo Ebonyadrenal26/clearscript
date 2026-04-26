@@ -49,6 +49,7 @@ htmlcov/
 # Documentation builds
 site/
 docs/_build/
+.venv-docs/
 
 # OS
 .DS_Store

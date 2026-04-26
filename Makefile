@@ -41,7 +41,18 @@ run:
 	uv run clearscript run examples/01-basic-cleanup/input.txt
 
 docs:
-	uv run --extra docs mkdocs serve
+	@if [ ! -d .venv-docs ]; then \
+		uv venv .venv-docs --python 3.13; \
+		uv pip install --python .venv-docs/bin/python "mkdocs-material>=9.5.0" "pymdown-extensions>=10.0"; \
+	fi
+	.venv-docs/bin/mkdocs serve
+
+docs-build:
+	@if [ ! -d .venv-docs ]; then \
+		uv venv .venv-docs --python 3.13; \
+		uv pip install --python .venv-docs/bin/python "mkdocs-material>=9.5.0" "pymdown-extensions>=10.0"; \
+	fi
+	.venv-docs/bin/mkdocs build --strict
 
 build:
 	uv build
