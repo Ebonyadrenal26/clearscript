@@ -7,7 +7,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/协议-MIT-D02020?style=for-the-badge&labelColor=121212" alt="MIT License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/PYTHON-3.11+-1040C0?style=for-the-badge&labelColor=121212" alt="Python 3.11+"></a>
-  <a href="https://github.com/Chen17-sq/clearscript/releases"><img src="https://img.shields.io/badge/版本-0.0.1-F0C020?style=for-the-badge&labelColor=121212" alt="v0.0.1"></a>
+  <a href="https://github.com/Chen17-sq/clearscript/releases"><img src="https://img.shields.io/badge/版本-0.0.7-F0C020?style=for-the-badge&labelColor=121212" alt="v0.0.7"></a>
   <a href="https://github.com/Chen17-sq/clearscript/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Chen17-sq/clearscript/ci.yml?branch=main&style=for-the-badge&labelColor=121212&color=121212&label=CI" alt="CI"></a>
   <a href="./README.md"><img src="https://img.shields.io/badge/English-FFFFFF?style=for-the-badge&labelColor=121212" alt="English"></a>
 </p>
@@ -18,11 +18,25 @@
 
 <hr>
 
-## 这是什么
+## 你又花了 45 分钟，改同一份稿子的同一类错误。
 
-**clearscript** 把各种 ASR 工具的原始输出，整理成档案级、可分享的逐字稿。运行在你本机、用你选的模型、每次跑都更准。
+ASR 给你 95% 对的稿子。剩下 5% 让人抓狂：
 
-它是某个用了上百次 VC ref check / 创始人访谈 / 投决会 / 播客录音整理的个人 Claude skill 的开源继任版本。
+- Speaker 2 永远不会变成真名
+- "Dify" 听成了 "DeFi"
+- "PingCAP" 听成了 "PinkCup"
+- 测麦客套话每次手动删
+- 上周改的字这周又来一遍
+
+明天又一场访谈。从零再来。
+
+**clearscript 看你改一次，下次它记住。**
+
+> [!TIP]
+> 拖一份原始稿 → 选个模型 → 点 Run → 直接在浏览器里改 → 下载 `.docx`。
+> 你改的每一处都进本地术语库。第 10 份稿子几乎不用动手。
+
+这东西最早是个个人用的 Claude skill，在几百次 VC ref check / 创始人访谈 / 投决会 / 播客整理上跑过。库越长越准，45 分钟变成 5 分钟。现在 MIT 开源，本地运行，归你用。
 
 <table>
 <tr>
@@ -192,6 +206,19 @@ clearscript/
 ```
 
 完整 pipeline 契约见 [`docs/architecture.md`](./docs/architecture.md)。
+
+<p align="center"><img src="./docs/assets/divider.svg" alt="" width="100%"></p>
+
+## 两种用法
+
+| 形态 | 适合谁 | 安装方式 |
+|---|---|---|
+| **本地应用**（web UI） | 想要完整编辑器的人——Library 标签、Project 历史、Diff 高亮、成本预览 | `git clone … && uv sync && uv run clearscript serve` |
+| **Claude skill** | 用 Claude Code 或 Claude Agent SDK 做 agent 的人 | [Releases](https://github.com/Chen17-sq/clearscript/releases) 下载 `clearscript.skill` → 解压到 `~/.claude/skills/` |
+
+两边**共用同一份 prompt 源代码**。主项目改进编辑规则，下次发布时 skill 自动跟着升级。
+
+→ 看 [manifesto](./docs/manifesto.md) 了解为什么 local-first 在这件事上不只是个 checkbox。
 
 <p align="center"><img src="./docs/assets/divider.svg" alt="" width="100%"></p>
 

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-D02020?style=for-the-badge&labelColor=121212" alt="MIT License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/PYTHON-3.11+-1040C0?style=for-the-badge&labelColor=121212" alt="Python 3.11+"></a>
-  <a href="https://github.com/Chen17-sq/clearscript/releases"><img src="https://img.shields.io/badge/VERSION-0.0.1-F0C020?style=for-the-badge&labelColor=121212" alt="v0.0.1"></a>
+  <a href="https://github.com/Chen17-sq/clearscript/releases"><img src="https://img.shields.io/badge/VERSION-0.0.7-F0C020?style=for-the-badge&labelColor=121212" alt="v0.0.7"></a>
   <a href="https://github.com/Chen17-sq/clearscript/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Chen17-sq/clearscript/ci.yml?branch=main&style=for-the-badge&labelColor=121212&color=121212&label=CI" alt="CI"></a>
   <a href="./README.zh-CN.md"><img src="https://img.shields.io/badge/简体中文-FFFFFF?style=for-the-badge&labelColor=121212" alt="Simplified Chinese"></a>
 </p>
@@ -18,11 +18,25 @@
 
 <hr>
 
-## What it is
+## You just spent 45 minutes fixing the same transcript errors. Again.
 
-**clearscript** turns raw speech-to-text output into archive-grade, shareable transcripts. It runs on your machine, works with whichever model you choose, and gets sharper every time you use it.
+Your ASR tool gives you 95% of the transcript right. The other 5% is mind-numbing:
 
-It is the open-source successor to a personal Claude skill that has been used on hundreds of VC reference checks, founder interviews, board meetings, and podcast recordings.
+- "Speaker 2" never gets a real name
+- "Dify" came back as "DeFi"
+- "PingCAP" came back as "PinkCup"
+- The mic-check pleasantries you delete every time
+- The same misheard jargon you fixed last week
+
+Then tomorrow you'll do another interview and start over.
+
+**clearscript watches you fix it once. Next time, it remembers.**
+
+> [!TIP]
+> Drop in a raw transcript → pick any model → click Run → edit inline → download `.docx`.
+> Your fixes go into a local terminology library. Run #10 barely needs touching.
+
+This started as a personal Claude skill that ran on a few hundred VC reference checks, founder interviews, board meetings, and podcast cleanups. The library learned. The 45 minutes shrank. Now it's MIT-licensed, local-first, and yours to use.
 
 <table>
 <tr>
@@ -203,6 +217,19 @@ clearscript/
 ```
 
 Read [`docs/architecture.md`](./docs/architecture.md) for the full pipeline contract.
+
+<p align="center"><img src="./docs/assets/divider.svg" alt="" width="100%"></p>
+
+## Use it your way
+
+| Form | For who | How to install |
+|---|---|---|
+| **Local app** (web UI) | Anyone who wants the full editor — Library tab, Project history, inline diff, cost preview | `git clone … && uv sync && uv run clearscript serve` |
+| **Claude skill** | Anyone using Claude Code or the Claude Agent SDK | Download `clearscript.skill` from [Releases](https://github.com/Chen17-sq/clearscript/releases) → unzip into `~/.claude/skills/` |
+
+Both share **the exact same prompt library**. Improvements to the standalone app's editing rules ship into the skill on the next release.
+
+→ Read the [manifesto](./docs/manifesto.md) for why local-first matters here.
 
 <p align="center"><img src="./docs/assets/divider.svg" alt="" width="100%"></p>
 

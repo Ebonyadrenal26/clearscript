@@ -15,11 +15,23 @@ hide:
 <span class="bh-pill bh-pill--white">MIT</span>
 </div>
 
-# What it is
+# You just spent 45 minutes fixing the same transcript errors. Again.
 
-**clearscript** turns raw speech-to-text output into archive-grade, shareable transcripts. It runs on your machine, works with whichever model you choose, and gets sharper every time you use it.
+Your ASR tool gives you 95% of the transcript right. The other 5% is mind-numbing:
 
-It is the open-source successor to a personal Claude skill that has been used on hundreds of VC reference checks, founder interviews, board meetings, and podcast recordings.
+- "Speaker 2" never gets a real name
+- "Dify" came back as "DeFi"
+- "PingCAP" came back as "PinkCup"
+- The mic-check pleasantries you delete every time
+- The same misheard jargon you fixed last week
+
+Then tomorrow you'll do another interview and start over.
+
+## clearscript watches you fix it once. Next time, it remembers.
+
+Drop in a raw transcript → pick any model → click Run → edit inline → download `.docx`. Your fixes go into a local terminology library. By run #10 you barely touch anything.
+
+This started as a personal Claude skill that ran on a few hundred VC reference checks, founder interviews, board meetings, and podcast cleanups. The library learned. The 45 minutes shrank. Now it's MIT-licensed, local-first, and yours to use.
 
 <div class="bh-features" markdown="1">
 

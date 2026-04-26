@@ -100,3 +100,4 @@ secrets/
 PyInstaller/
 pyinstaller-build/
 release/
+dist/

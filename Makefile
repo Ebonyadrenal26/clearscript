@@ -56,3 +56,6 @@ docs-build:
 
 build:
 	uv build
+
+skill:
+	bash scripts/build_skill.sh
