@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from clearscript import __version__
 from clearscript.config import Config, ensure_dirs, load_config
+from clearscript.core.cost import estimate_cost
 from clearscript.core.pipeline import Pipeline
 from clearscript.export import write_docx
 from clearscript.ingest import parse as parse_path
@@ -134,6 +135,16 @@ class SuggestionItem(BaseModel):
 
 class AcceptSuggestionsRequest(BaseModel):
     suggestions: list[SuggestionItem]
+
+
+class EstimateCostRequest(BaseModel):
+    transcript: str
+    provider: str | None = None
+    model: str | None = None
+
+
+class UpdateTranscriptRequest(BaseModel):
+    cleaned_markdown: str
 
 
 # ============ App factory ============
@@ -366,6 +377,26 @@ def create_app() -> FastAPI:
             headers={"Content-Disposition": 'attachment; filename="clearscript-output.docx"'},
         )
 
+    @app.post("/api/estimate-cost")
+    def estimate_cost_endpoint(req: EstimateCostRequest) -> dict:
+        c = cfg()
+        try:
+            provider_cfg = c.get_provider(req.provider)
+        except KeyError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        chosen_model = req.model or provider_cfg.default_model or ""
+        est = estimate_cost(
+            transcript_text=req.transcript,
+            provider_type=provider_cfg.type,
+            model=chosen_model,
+        )
+        return {
+            "provider": provider_cfg.name,
+            "provider_type": provider_cfg.type,
+            "model": chosen_model,
+            **est.as_dict(),
+        }
+
     @app.get("/api/example")
     def get_example() -> dict:
         examples_root = (
@@ -396,6 +427,21 @@ def create_app() -> FastAPI:
         if not store.delete(slug):
             raise HTTPException(404, f"Project {slug!r} not found")
         return Response(status_code=204)
+
+    @app.patch("/api/projects/{slug}/transcript")
+    def update_project_transcript(slug: str, payload: UpdateTranscriptRequest) -> dict:
+        """Save user's hand-edits back to the project's cleaned markdown."""
+        store = ProjectStore(cfg().projects_root)
+        if not store.exists(slug):
+            raise HTTPException(404, f"Project {slug!r} not found")
+        project = store.open(slug)
+        project.cleaned_md_path.write_text(payload.cleaned_markdown, encoding="utf-8")
+        # Invalidate the cached docx so the next download regenerates from the
+        # updated markdown rather than serving the stale version.
+        if project.cleaned_docx_path.is_file():
+            with contextlib.suppress(FileNotFoundError):
+                project.cleaned_docx_path.unlink()
+        return {"ok": True, "slug": slug, "bytes": len(payload.cleaned_markdown)}
 
     @app.get("/api/projects/{slug}/transcript.md")
     def project_transcript_md(slug: str) -> Response:

@@ -53,6 +53,16 @@
     .status-verified  { background: #D02020; }
     .status-disputed  { background: #F0C020; }
     .status-deprecated { background: #E0E0E0; }
+    /* Diff view layer highlights — Bauhaus colors */
+    .diff-mark { border-radius: 0; padding: 0 2px; cursor: help; }
+    .diff-l1   { background: #BFD3FF; }       /* speaker norm — light blue */
+    .diff-l2   { background: #E0E0E0; text-decoration: line-through; }
+    .diff-l3   { background: #FFB8B8; }       /* ASR fix — light red */
+    .diff-l35  { background: #FFCB80; }       /* sentence reconstruction — orange */
+    .diff-l4   { background: #D8F0D8; }       /* preservation flags */
+    .diff-l5   { background: #C5D6F2; }       /* format */
+    .diff-l6   { background: #FCE7A0; }       /* punctuation — light yellow */
+    .diff-other{ background: #F0F0F0; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -170,6 +180,15 @@
             </button>
           </div>
 
+          <!-- Cost preview (live, updates on input/provider/model change) -->
+          <div id="cost-preview" class="mt-3 hidden border-2 border-ink bg-bg px-3 py-2 text-[11px] font-mono">
+            <span class="font-bold uppercase tracking-widest text-ink/60">Estimated:</span>
+            <span id="cost-tokens" class="ml-2">—</span>
+            <span class="mx-2 text-ink/30">·</span>
+            <span id="cost-amount" class="font-bold">—</span>
+            <span id="cost-note" class="ml-2 text-ink/50"></span>
+          </div>
+
           <div id="status" class="mt-4 hidden border-2 border-ink p-3 text-sm font-bold"></div>
         </div>
       </section>
@@ -177,8 +196,16 @@
       <!-- OUTPUT PANEL -->
       <section class="border-4 border-ink bg-white shadow-bauhaus-lg">
         <header class="border-b-4 border-ink bg-red text-white px-5 py-3 flex items-center justify-between">
-          <h2 class="font-black uppercase tracking-widest text-sm">Cleaned output</h2>
+          <h2 class="font-black uppercase tracking-widest text-sm flex items-center gap-3">
+            Cleaned output
+            <span id="output-save-state" class="text-[10px] font-bold uppercase tracking-widest opacity-70 hidden">saved</span>
+          </h2>
           <div class="flex items-center gap-2">
+            <!-- View toggle: Edit (textarea) vs Diff (highlighted read-only) -->
+            <div class="border-2 border-ink bg-white shadow-bauhaus-sm flex">
+              <button id="view-edit-btn" class="px-3 py-1 text-[11px] font-bold uppercase tracking-widest bg-ink text-white">Edit</button>
+              <button id="view-diff-btn" class="px-3 py-1 text-[11px] font-bold uppercase tracking-widest bg-white text-ink border-l-2 border-ink">Diff</button>
+            </div>
             <button id="copy-btn" class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40" disabled>Copy MD</button>
             <button id="download-md-btn" class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:bg-yellow disabled:opacity-40" disabled>↓ .md</button>
             <button id="download-docx-btn" class="bauhaus-press border-2 border-ink bg-yellow text-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest shadow-bauhaus-sm hover:opacity-90 disabled:opacity-40" disabled>↓ .docx</button>
@@ -186,16 +213,34 @@
         </header>
 
         <div class="p-5">
-          <div id="output-preview"
-            class="font-mono text-sm w-full h-[420px] border-2 border-ink bg-bg p-3 overflow-auto whitespace-pre-wrap break-words panel-scroll text-ink/40">
-            Cleaned transcript appears here after you click "Clean transcript".
+          <!-- EDIT view: editable textarea -->
+          <textarea id="output-textarea"
+            class="font-mono text-sm w-full h-[420px] border-2 border-ink bg-bg p-3 panel-scroll resize-none text-ink/40 focus:outline-none focus:shadow-bauhaus-sm"
+            placeholder='Cleaned transcript appears here after you click "Clean transcript". You can edit it inline; changes auto-save to the project.'
+            disabled></textarea>
+
+          <!-- DIFF view: read-only annotated -->
+          <div id="output-diff"
+            class="font-mono text-sm w-full h-[420px] border-2 border-ink bg-bg p-3 overflow-auto whitespace-pre-wrap break-words panel-scroll text-ink/40 hidden">
+            Run a transcript first, then switch to Diff to see what was changed and why.
           </div>
 
-          <div class="mt-4 grid grid-cols-4 gap-3 text-center">
+          <div class="mt-4 grid grid-cols-5 gap-3 text-center">
             <div class="border-2 border-ink bg-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">In</div><div id="stat-in" class="font-mono font-black text-lg">—</div></div>
             <div class="border-2 border-ink bg-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Out</div><div id="stat-out" class="font-mono font-black text-lg">—</div></div>
             <div class="border-2 border-ink bg-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/60">Changes</div><div id="stat-changes" class="font-mono font-black text-lg">—</div></div>
+            <div class="border-2 border-ink bg-blue text-white px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest opacity-80">Chunks</div><div id="stat-chunks" class="font-mono font-black text-lg">—</div></div>
             <div class="border-2 border-ink bg-yellow px-3 py-2"><div class="text-[10px] font-bold uppercase tracking-widest text-ink/80">Latency</div><div id="stat-time" class="font-mono font-black text-lg">—</div></div>
+          </div>
+
+          <!-- Diff legend (only shown in diff view) -->
+          <div id="diff-legend" class="hidden mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-ink/60">
+            Layers:
+            <span class="diff-mark diff-l1 px-2 py-0.5 border border-ink">L1 speaker</span>
+            <span class="diff-mark diff-l3 px-2 py-0.5 border border-ink">L3 ASR fix</span>
+            <span class="diff-mark diff-l35 px-2 py-0.5 border border-ink">L3.5 sentence</span>
+            <span class="diff-mark diff-l5 px-2 py-0.5 border border-ink">L5 format</span>
+            <span class="diff-mark diff-l6 px-2 py-0.5 border border-ink">L6 punct</span>
           </div>
 
           <details class="mt-4 border-2 border-ink bg-white">
@@ -438,7 +483,10 @@
             <button data-pdtab="briefing" class="pd-tab bauhaus-press border-r-4 border-ink px-4 py-2 text-[11px] font-black uppercase tracking-widest bg-white text-ink hover:bg-yellow">Briefing</button>
           </nav>
 
-          <pre id="pd-cleaned" class="pd-panel font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
+          <div class="pd-panel relative" id="pd-cleaned-wrap">
+            <textarea id="pd-cleaned" class="font-mono text-xs p-4 w-full h-[480px] panel-scroll resize-none focus:outline-none focus:bg-bg"></textarea>
+            <span id="pd-save-state" class="absolute top-2 right-3 text-[10px] font-bold uppercase tracking-widest text-ink/40 hidden">saved</span>
+          </div>
           <pre id="pd-raw" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap text-ink/70"></pre>
           <pre id="pd-changelog" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
           <pre id="pd-suggestions" class="pd-panel hidden font-mono text-xs p-4 max-h-[480px] overflow-auto panel-scroll whitespace-pre-wrap"></pre>
@@ -470,11 +518,14 @@
       providers: [], defaultProvider: null, selectedProvider: null,
       lastResult: null, suggestions: [], selectedSuggestions: new Set(),
       tab: 'editor', subtab: 'terms', pdtab: 'cleaned',
-      pendingFile: null,            // File object for binary uploads (e.g. .docx)
-      pendingFormat: null,          // "md" / "srt" / "vtt" / "json" / "docx" / "txt"
+      pendingFile: null,
+      pendingFormat: null,
       projects: [],
       selectedProjectSlug: null,
       projectDetail: null,
+      outputView: 'edit',           // 'edit' | 'diff'
+      saveTimer: null,
+      lastSaved: '',
     };
 
     const TEXT_FORMATS = new Set(['txt', 'md', 'srt', 'vtt', 'json']);
@@ -559,6 +610,7 @@
       const p = state.providers.find((x) => x.name === name);
       if (p && p.default_model) $('model-input').placeholder = p.default_model;
       renderPills(); hideStatus();
+      scheduleCostPreview();
     }
     function renderPills() {
       const c = $('provider-pills'); c.innerHTML = '';
@@ -777,25 +829,30 @@
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     }
+    function currentMarkdown() {
+      // Always use the live textarea content so user edits are picked up
+      return $('output-textarea').value || (state.lastResult && state.lastResult.edited_markdown) || '';
+    }
     async function downloadDocx() {
       if (!state.lastResult) return;
       const res = await fetch('/api/export/docx', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: state.lastResult.edited_markdown, title: $('title-input').value.trim() || null }),
+        body: JSON.stringify({ markdown: currentMarkdown(), title: $('title-input').value.trim() || null }),
       });
       if (!res.ok) { setStatus('docx export failed: ' + res.statusText, 'error'); return; }
       downloadBlob(await res.blob(), 'clearscript-output.docx');
     }
     function downloadMd() {
       if (!state.lastResult) return;
+      const md = currentMarkdown();
       const title = $('title-input').value.trim();
-      const body = title ? `# ${title}\n\n${state.lastResult.edited_markdown}\n` : state.lastResult.edited_markdown + '\n';
+      const body = title ? `# ${title}\n\n${md}\n` : md + '\n';
       downloadBlob(new Blob([body], { type: 'text/markdown' }), 'clearscript-output.md');
     }
     async function copyMd() {
       if (!state.lastResult) return;
       try {
-        await navigator.clipboard.writeText(state.lastResult.edited_markdown);
+        await navigator.clipboard.writeText(currentMarkdown());
         setStatus('Markdown copied to clipboard.', 'ok');
         setTimeout(hideStatus, 2000);
       } catch (e) { setStatus('Copy failed: ' + e.message, 'error'); }
@@ -1064,7 +1121,11 @@
       $('pd-stat-model').textContent = d.model || '—';
       $('pd-stat-tokens').textContent = (d.total_tokens || 0).toLocaleString();
       $('pd-stat-changes').textContent = (d.change_log?.length || 0).toLocaleString();
-      $('pd-cleaned').textContent = d.cleaned_markdown || '(empty)';
+      const cleanedTa = $('pd-cleaned');
+      cleanedTa.value = d.cleaned_markdown || '';
+      cleanedTa.dataset.lastSaved = cleanedTa.value;
+      $('pd-save-state').textContent = 'saved';
+      $('pd-save-state').classList.add('hidden');
       $('pd-raw').textContent = d.raw_input || '(binary input — use ↓ raw to download)';
       $('pd-changelog').textContent = d.change_log?.length ? JSON.stringify(d.change_log, null, 2) : '(no changes)';
       $('pd-suggestions').textContent = d.suggestions?.length ? JSON.stringify(d.suggestions, null, 2) : '(no suggestions)';
@@ -1072,6 +1133,34 @@
 
       ['proj-download-md', 'proj-download-docx', 'proj-download-input', 'proj-delete'].forEach((id) => $(id).disabled = false);
       setPdTab('cleaned');
+    }
+
+    let pdSaveTimer = null;
+    function schedulePdSave() {
+      const ta = $('pd-cleaned');
+      if (!state.selectedProjectSlug) return;
+      if (ta.value === ta.dataset.lastSaved) return;
+      $('pd-save-state').textContent = 'saving…';
+      $('pd-save-state').classList.remove('hidden');
+      clearTimeout(pdSaveTimer);
+      pdSaveTimer = setTimeout(async () => {
+        const slug = state.selectedProjectSlug;
+        try {
+          const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/transcript`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cleaned_markdown: ta.value }),
+          });
+          if (res.ok) {
+            ta.dataset.lastSaved = ta.value;
+            $('pd-save-state').textContent = 'saved';
+          } else {
+            $('pd-save-state').textContent = 'save failed';
+          }
+        } catch (e) {
+          $('pd-save-state').textContent = 'offline';
+        }
+      }, 700);
     }
 
     function setPdTab(name) {
@@ -1125,13 +1214,19 @@
       $$('.lib-subtab').forEach((b) => b.addEventListener('click', () => setSubtab(b.dataset.subtab)));
 
       // Editor
-      $('transcript-input').addEventListener('input', updateInputMeta);
+      $('transcript-input').addEventListener('input', () => { updateInputMeta(); scheduleCostPreview(); });
+      $('model-input').addEventListener('input', scheduleCostPreview);
       $('run-btn').addEventListener('click', runPipeline);
       $('clear-btn').addEventListener('click', clearAll);
-      $('load-example-btn').addEventListener('click', loadExample);
+      $('load-example-btn').addEventListener('click', () => { loadExample().then(scheduleCostPreview); });
       $('copy-btn').addEventListener('click', copyMd);
       $('download-md-btn').addEventListener('click', downloadMd);
       $('download-docx-btn').addEventListener('click', downloadDocx);
+
+      // Output: editable textarea auto-save + view toggle
+      $('output-textarea').addEventListener('input', scheduleSave);
+      $('view-edit-btn').addEventListener('click', () => setOutputView('edit'));
+      $('view-diff-btn').addEventListener('click', () => setOutputView('diff'));
 
       $('drop-zone').addEventListener('click', () => $('file-input').click());
       $('file-input').addEventListener('change', (e) => {
@@ -1179,6 +1274,7 @@
       // Projects
       $('projects-refresh-btn').addEventListener('click', loadProjects);
       $$('.pd-tab').forEach((btn) => btn.addEventListener('click', () => setPdTab(btn.dataset.pdtab)));
+      $('pd-cleaned').addEventListener('input', schedulePdSave);
       $('proj-download-md').addEventListener('click', () => {
         if (state.selectedProjectSlug) window.location = `/api/projects/${encodeURIComponent(state.selectedProjectSlug)}/transcript.md`;
       });
