@@ -743,9 +743,11 @@
       if (!state.selectedProvider) { setStatus('Pick a provider with an API key set.', 'warn'); return; }
 
       hideStatus(); setRunning(true);
+      // Reset textarea but keep it active — streaming deltas need to flow in.
       $('output-textarea').value = '';
-      $('output-textarea').classList.add('text-ink/40');
-      $('output-textarea').disabled = true;
+      $('output-textarea').classList.remove('text-ink/40');
+      $('output-textarea').disabled = false;
+      $('output-save-state').classList.add('hidden');
       $('suggestions-panel').classList.add('hidden');
 
       // Binary uploads use the existing non-streaming path (.docx file).
@@ -818,6 +820,20 @@
                 $('progress-counter').textContent = `${event.data.chunk} / ${event.data.total}`;
                 break;
               }
+              case 'chunk_delta': {
+                // Live append the model's output as it streams in.
+                const ta = $('output-textarea');
+                if (ta.disabled) {
+                  ta.disabled = false;
+                  ta.classList.remove('text-ink/40');
+                  ta.value = '';
+                }
+                ta.value += (event.data.delta || '');
+                ta.scrollTop = ta.scrollHeight;
+                $('progress-tokens-out').textContent = `${(event.data.chars_so_far || 0).toLocaleString()} chars`;
+                $('progress-label').textContent = `Chunk ${event.data.chunk} of ${event.data.total} — receiving…`;
+                break;
+              }
               case 'chunk_done': {
                 const pct = event.data.total > 0 ? (event.data.chunk / event.data.total) * 100 : 0;
                 $('progress-fill').style.width = pct + '%';
@@ -837,6 +853,9 @@
               }
               case 'saved': {
                 savedSlug = event.data.project_slug;
+                if (event.data.actual_cost) {
+                  state.lastActualCost = event.data.actual_cost;
+                }
                 break;
               }
               case 'error': {
@@ -872,7 +891,14 @@
         renderSuggestions(data.suggestions);
         hideProgress();
         const slugTag = savedSlug ? ` · saved as ${savedSlug}` : '';
-        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${data.suggestions.length} library suggestions${slugTag}`, 'ok');
+        const ac = state.lastActualCost;
+        let costTag = '';
+        if (ac && ac.pricing_known) {
+          if (ac.total_cost_usd === 0) costTag = ' · cost: free (local)';
+          else if (ac.total_cost_usd < 0.001) costTag = ' · cost: <$0.001 actual';
+          else costTag = ` · cost: $${ac.total_cost_usd.toFixed(4)} actual`;
+        }
+        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${data.suggestions.length} suggestions${costTag}${slugTag}`, 'ok');
         loadProjects();
       } catch (e) {
         if (e.name === 'AbortError') {
