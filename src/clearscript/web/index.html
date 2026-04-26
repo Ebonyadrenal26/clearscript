@@ -525,7 +525,7 @@
         <span class="inline-block w-3 h-3 bg-yellow border border-bg"></span>
         <span class="ml-2">No telemetry. No cloud. Your data stays here.</span>
       </div>
-      <div class="opacity-60">v0.0.3 · MIT · github.com/Chen17-sq/clearscript</div>
+      <div class="opacity-60"><span id="footer-version">loading…</span> · MIT · github.com/Chen17-sq/clearscript</div>
     </div>
   </footer>
 
@@ -652,7 +652,13 @@
       try {
         const data = await (await fetch('/api/health')).json();
         $('version').textContent = 'v' + data.version;
-      } catch (e) { $('version').textContent = 'offline'; }
+        const f = $('footer-version');
+        if (f) f.textContent = 'v' + data.version;
+      } catch (e) {
+        $('version').textContent = 'offline';
+        const f = $('footer-version');
+        if (f) f.textContent = 'offline';
+      }
     }
 
     async function loadExample() {
@@ -936,15 +942,172 @@
       }
     }
     function renderResult(data, elapsed) {
-      $('output-preview').textContent = data.edited_markdown;
-      $('output-preview').classList.remove('text-ink/40');
-      $('stat-in').textContent = data.input_tokens.toLocaleString();
-      $('stat-out').textContent = data.output_tokens.toLocaleString();
-      $('stat-changes').textContent = data.change_log.length.toLocaleString();
+      const ta = $('output-textarea');
+      ta.value = data.edited_markdown || '';
+      ta.disabled = false;
+      ta.classList.remove('text-ink/40');
+      state.lastSaved = ta.value;
+      $('output-save-state').textContent = 'saved';
+      $('output-save-state').classList.remove('hidden');
+
+      $('stat-in').textContent = (data.input_tokens || 0).toLocaleString();
+      $('stat-out').textContent = (data.output_tokens || 0).toLocaleString();
+      $('stat-changes').textContent = (data.change_log?.length || 0).toLocaleString();
+      $('stat-chunks').textContent = (data.num_chunks || 1).toLocaleString();
       $('stat-time').textContent = elapsed + 's';
-      $('changelog-count').textContent = `(${data.change_log.length})`;
-      $('changelog-pre').textContent = data.change_log.length ? JSON.stringify(data.change_log, null, 2) : '(no structured changes returned)';
+      $('changelog-count').textContent = `(${data.change_log?.length || 0})`;
+      $('changelog-pre').textContent = data.change_log?.length
+        ? JSON.stringify(data.change_log, null, 2)
+        : '(no structured changes returned)';
       ['copy-btn', 'download-md-btn', 'download-docx-btn'].forEach((id) => { $(id).disabled = false; });
+
+      // Pre-render the diff view so user can toggle without delay
+      $('output-diff').innerHTML = renderDiff(data.edited_markdown || '', data.change_log || []);
+      $('output-diff').classList.remove('text-ink/40');
+    }
+
+    // ============ View toggle: Edit (textarea) vs Diff (highlighted read-only) ============
+    function setOutputView(name) {
+      state.outputView = name;
+      const editing = name === 'edit';
+      $('output-textarea').classList.toggle('hidden', !editing);
+      $('output-diff').classList.toggle('hidden', editing);
+      $('diff-legend').classList.toggle('hidden', editing);
+      $('view-edit-btn').classList.toggle('bg-ink', editing);
+      $('view-edit-btn').classList.toggle('text-white', editing);
+      $('view-edit-btn').classList.toggle('bg-white', !editing);
+      $('view-edit-btn').classList.toggle('text-ink', !editing);
+      $('view-diff-btn').classList.toggle('bg-ink', !editing);
+      $('view-diff-btn').classList.toggle('text-white', !editing);
+      $('view-diff-btn').classList.toggle('bg-white', editing);
+      $('view-diff-btn').classList.toggle('text-ink', editing);
+    }
+
+    // ============ Diff rendering ============
+    function escapeHtmlSimple(s) {
+      return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    }
+    function layerClass(layer) {
+      const l = String(layer || '').toUpperCase().replace('.', '');
+      if (l.startsWith('L1')) return 'diff-l1';
+      if (l === 'L2') return 'diff-l2';
+      if (l === 'L3') return 'diff-l3';
+      if (l === 'L35' || l === 'L3_5') return 'diff-l35';
+      if (l === 'L4') return 'diff-l4';
+      if (l === 'L5') return 'diff-l5';
+      if (l === 'L6') return 'diff-l6';
+      return 'diff-other';
+    }
+    function renderDiff(cleanedMd, changeLog) {
+      if (!cleanedMd) return '<span class="text-ink/40 italic">No output yet — run a transcript first.</span>';
+      if (!changeLog || !changeLog.length) return escapeHtmlSimple(cleanedMd);
+
+      // Build marks list, longest needles first to win when overlapping
+      const marks = [];
+      for (const change of changeLog) {
+        const newText = change.new || change.new_text;
+        if (!newText || typeof newText !== 'string') continue;
+        if (newText.length < 1 || newText.length > 200) continue;
+        marks.push({
+          needle: newText,
+          cls: layerClass(change.layer),
+          reason: change.reason || `${change.layer || ''}: ${change.old || ''} → ${newText}`,
+          chunk: change.chunk,
+        });
+      }
+      marks.sort((a, b) => b.needle.length - a.needle.length);
+
+      // Two-pass replace: first replace each needle with a sentinel,
+      // then replace sentinels with markup so we don't double-highlight.
+      let html = escapeHtmlSimple(cleanedMd);
+      const sentinels = [];
+      marks.forEach((m, idx) => {
+        const escapedNeedle = escapeHtmlSimple(m.needle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(escapedNeedle, 'g');
+        const sentinel = `__SENTINEL_MARK_${idx}_`;
+        if (re.test(html)) {
+          html = html.replace(re, sentinel);
+          sentinels.push({ sentinel, mark: m });
+        }
+      });
+      sentinels.forEach(({ sentinel, mark }) => {
+        const tooltip = escapeHtmlSimple(mark.reason);
+        const chunkBadge = mark.chunk ? ` [chunk ${mark.chunk}]` : '';
+        const replacement = `<span class="diff-mark ${mark.cls}" title="${tooltip}${chunkBadge}">${escapeHtmlSimple(mark.needle)}</span>`;
+        html = html.split(sentinel).join(replacement);
+      });
+      return html;
+    }
+
+    // ============ Inline auto-save (Editor textarea → project file) ============
+    function scheduleSave() {
+      if (!state.lastResult || !state.lastResult.project_slug) return;
+      const ta = $('output-textarea');
+      if (ta.value === state.lastSaved) return;
+      $('output-save-state').textContent = 'saving…';
+      $('output-save-state').classList.remove('hidden');
+      clearTimeout(state.saveTimer);
+      state.saveTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/projects/${encodeURIComponent(state.lastResult.project_slug)}/transcript`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cleaned_markdown: ta.value }),
+          });
+          if (res.ok) {
+            state.lastSaved = ta.value;
+            $('output-save-state').textContent = 'saved';
+            state.lastResult.edited_markdown = ta.value;
+          } else {
+            $('output-save-state').textContent = 'save failed';
+          }
+        } catch (e) {
+          $('output-save-state').textContent = 'offline';
+        }
+      }, 700);
+    }
+
+    // ============ Cost preview (live as user types / changes provider) ============
+    let costDebounce = null;
+    function scheduleCostPreview() {
+      clearTimeout(costDebounce);
+      costDebounce = setTimeout(updateCostPreview, 350);
+    }
+    async function updateCostPreview() {
+      const transcript = $('transcript-input').value.trim();
+      if (!transcript || !state.selectedProvider) {
+        $('cost-preview').classList.add('hidden');
+        return;
+      }
+      try {
+        const res = await fetch('/api/estimate-cost', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript,
+            provider: state.selectedProvider,
+            model: $('model-input').value.trim() || null,
+          }),
+        });
+        if (!res.ok) { $('cost-preview').classList.add('hidden'); return; }
+        const d = await res.json();
+        $('cost-preview').classList.remove('hidden');
+        $('cost-tokens').textContent = `~${(d.input_tokens || 0).toLocaleString()} in + ${(d.output_tokens_estimate || 0).toLocaleString()} out`;
+        if (d.pricing_known) {
+          if (d.total_cost_usd === 0) {
+            $('cost-amount').textContent = 'free (local)';
+          } else if (d.total_cost_usd < 0.001) {
+            $('cost-amount').textContent = '< $0.001';
+          } else {
+            $('cost-amount').textContent = `≈ $${d.total_cost_usd.toFixed(4)}`;
+          }
+        } else {
+          $('cost-amount').textContent = '?';
+        }
+        $('cost-note').textContent = d.note || `${d.provider} · ${d.model}`;
+      } catch (e) {
+        $('cost-preview').classList.add('hidden');
+      }
     }
 
     // ============ Mode B: Suggestions panel ============
@@ -1041,18 +1204,28 @@
     function clearAll() {
       $('transcript-input').value = '';
       $('transcript-input').disabled = false;
-      $('output-preview').textContent = 'Cleaned transcript appears here after you click "Clean transcript".';
-      $('output-preview').classList.add('text-ink/40');
+      const ta = $('output-textarea');
+      ta.value = '';
+      ta.disabled = true;
+      ta.classList.add('text-ink/40');
+      $('output-diff').innerHTML = 'Run a transcript first, then switch to Diff to see what was changed.';
+      $('output-diff').classList.add('text-ink/40');
+      $('output-save-state').classList.add('hidden');
       $('changelog-pre').textContent = '';
       $('changelog-count').textContent = '(0)';
-      ['stat-in', 'stat-out', 'stat-changes', 'stat-time'].forEach((id) => { $(id).textContent = '—'; });
+      ['stat-in', 'stat-out', 'stat-changes', 'stat-chunks', 'stat-time'].forEach((id) => { $(id).textContent = '—'; });
       ['copy-btn', 'download-md-btn', 'download-docx-btn'].forEach((id) => { $(id).disabled = true; });
       $('suggestions-panel').classList.add('hidden');
+      $('cost-preview').classList.add('hidden');
+      hideProgress();
       state.lastResult = null;
+      state.lastSaved = '';
       state.pendingFile = null;
       state.pendingFormat = null;
       $('file-badge').classList.add('hidden');
-      hideStatus(); updateInputMeta();
+      hideStatus();
+      updateInputMeta();
+      setOutputView('edit');
     }
 
     // ============ Library: stats ============

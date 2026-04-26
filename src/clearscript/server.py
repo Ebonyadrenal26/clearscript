@@ -220,7 +220,16 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
         html = resources.files("clearscript.web").joinpath("index.html").read_text(encoding="utf-8")
-        return HTMLResponse(html)
+        # Disable browser caching of the SPA so version bumps are immediately
+        # visible after `clearscript serve` restarts.
+        return HTMLResponse(
+            html,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     @app.get("/api/health")
     def health() -> dict:
