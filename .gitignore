@@ -73,16 +73,18 @@ web/dist/
 web/.env
 web/.env.local
 
-# clearscript runtime data (user's local library — never commit)
+# clearscript runtime data — these live in platform user dirs, not in the
+# repo, so the patterns are mostly defensive against accidental copies.
+# IMPORTANT: do NOT add bare folder names like `library/` or `projects/` here
+# — they'd match `src/clearscript/library/` and other source paths too.
 *.db
 *.db-wal
 *.db-shm
 *.sqlite
 *.sqlite3
-data/
 .clearscript/
-projects/
-library/
+/data/
+/projects/
 embeddings.npy
 embeddings.faiss
 
