@@ -8,6 +8,7 @@ the user explicitly passes ``--host 0.0.0.0``.
 from __future__ import annotations
 
 import contextlib
+import json
 import tempfile
 import threading
 import time
@@ -15,8 +16,8 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from clearscript import __version__
@@ -44,23 +45,75 @@ _FORMAT_ADAPTERS = {
 }
 
 
-def _slug_hint_from_input(text: str | None, filename: str | None) -> str:
-    """Pick a project slug hint from filename, first speaker line, or first line."""
+# Mic-check / pleasantry phrases that should NOT become project slugs.
+_PLEASANTRY_PATTERNS = (
+    "测",  # 测一下麦 / 测试
+    "听得见",
+    "听不听得见",
+    "能听见",
+    "可以听到",
+    "hello",
+    "hi",
+    "can you hear",
+    "test",
+    "好的",  # 太通用
+)
+
+
+def _sse_format(event_name: str, data: dict) -> str:
+    """Encode a dict payload as a single Server-Sent Event."""
+    return f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _looks_like_pleasantry(text: str) -> bool:
+    lower = text.lower().strip()
+    if len(lower) < 6:
+        return True
+    return any(p in lower for p in _PLEASANTRY_PATTERNS) and len(lower) <= 30
+
+
+def _slug_hint_from_input(
+    text: str | None,
+    filename: str | None,
+    *,
+    title: str | None = None,
+    briefing: str | None = None,
+) -> str:
+    """Pick a project slug hint, preferring user-provided context over auto-extracted text.
+
+    Priority order:
+    1. Explicit title
+    2. Filename stem
+    3. First proper-noun-looking phrase from briefing
+    4. First non-pleasantry speaker turn from the transcript
+    5. Fallback "transcript"
+    """
+    if title and title.strip():
+        return title.strip()[:50]
     if filename:
         stem = Path(filename).stem
-        if stem:
+        if stem and not _looks_like_pleasantry(stem):
             return stem
+    if briefing and briefing.strip():
+        # Take the first 50 chars of the briefing as a hint
+        first_line = briefing.strip().splitlines()[0].strip()
+        if first_line and not _looks_like_pleasantry(first_line):
+            return first_line[:50]
     if text:
         for raw in text.splitlines():
             line = raw.strip()
             if not line:
                 continue
+            content = line
             for delim in (":", "："):
                 if delim in line:
-                    candidate = line.split(delim, 1)[1].strip()
-                    if candidate:
-                        return candidate[:50]
-            return line[:50]
+                    content = line.split(delim, 1)[1].strip()
+                    break
+            if not content:
+                continue
+            if _looks_like_pleasantry(content):
+                continue
+            return content[:50]
     return "transcript"
 
 
@@ -247,7 +300,12 @@ def create_app() -> FastAPI:
         project_slug: str | None = None
         try:
             store = ProjectStore(cfg().projects_root)
-            slug_hint = title or _slug_hint_from_input(save_input_text, save_input_filename)
+            slug_hint = _slug_hint_from_input(
+                save_input_text,
+                save_input_filename,
+                title=title,
+                briefing=briefing,
+            )
             project = store.create(slug_hint)
             project.save_run(
                 title=title,
@@ -304,6 +362,94 @@ def create_app() -> FastAPI:
             title=req.title,
             format_=fmt,
             save_input_text=req.transcript,
+        )
+
+    @app.post("/api/run-stream")
+    def run_pipeline_stream(req: RunRequest, request: Request) -> StreamingResponse:
+        """Server-Sent Events version of /api/run.
+
+        Emits events: ``plan``, ``chunk_start``, ``chunk_done``, ``complete``,
+        ``error``. Keeps the connection open while the pipeline runs so the
+        UI can show real progress instead of a blind spinner.
+
+        Same input contract as /api/run; same project persistence; same library
+        side-effects. The only difference is the wire format.
+        """
+        if not req.transcript.strip():
+            raise HTTPException(400, "Transcript is empty.")
+
+        llm, chosen_model = _resolve_pipeline_pieces(req.provider, req.model)
+
+        fmt = (req.format or "txt").lower()
+        adapter_cls = _FORMAT_ADAPTERS.get(fmt, TxtAdapter)
+        try:
+            transcript_obj = adapter_cls().parse_string(req.transcript)
+        except ValueError as exc:
+            raise HTTPException(400, f"Failed to parse {fmt!r}: {exc}") from exc
+
+        def event_stream():
+            t0 = time.time()
+            library = open_library()
+            final_result = None
+            try:
+                pipeline = Pipeline(
+                    provider=llm,
+                    model=chosen_model,
+                    library=library,
+                    briefing_context=req.briefing or "",
+                )
+                for event in pipeline.iter_events(transcript_obj):
+                    payload = {k: v for k, v in event.data.items() if k != "result"}
+                    if event.name == "complete":
+                        final_result = event.data.get("result")
+                    yield _sse_format(event.name, payload)
+            except Exception as exc:
+                yield _sse_format("error", {"detail": f"pipeline error: {exc}"})
+                return
+            finally:
+                library.close()
+
+            # Persist the project (same logic as the sync path).
+            project_slug = None
+            if final_result is not None:
+                try:
+                    duration = time.time() - t0
+                    store = ProjectStore(cfg().projects_root)
+                    slug_hint = _slug_hint_from_input(
+                        req.transcript,
+                        None,
+                        title=req.title,
+                        briefing=req.briefing,
+                    )
+                    project = store.create(slug_hint)
+                    project.save_run(
+                        title=req.title,
+                        format_=fmt,
+                        provider=final_result.provider,
+                        model=final_result.model,
+                        input_text=req.transcript,
+                        briefing=req.briefing or "",
+                        edited_markdown=final_result.edited_markdown,
+                        change_log=final_result.change_log,
+                        suggestions=final_result.suggestions,
+                        input_tokens=final_result.input_tokens,
+                        output_tokens=final_result.output_tokens,
+                        duration_sec=duration,
+                    )
+                    project_slug = project.slug
+                except OSError:
+                    project_slug = None
+
+            yield _sse_format("saved", {"project_slug": project_slug})
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",  # disable nginx buffering if reverse-proxied
+                "Connection": "keep-alive",
+            },
         )
 
     @app.post("/api/run-file", response_model=RunResponse)

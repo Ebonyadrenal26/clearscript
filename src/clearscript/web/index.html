@@ -189,6 +189,26 @@
             <span id="cost-note" class="ml-2 text-ink/50"></span>
           </div>
 
+          <!-- Progress (visible during streaming runs) -->
+          <div id="progress-panel" class="mt-3 hidden border-2 border-ink bg-white">
+            <div class="flex items-center gap-3 px-3 py-2 border-b-2 border-ink bg-blue text-white">
+              <span id="progress-label" class="font-bold uppercase tracking-widest text-xs flex-1">Running…</span>
+              <span id="progress-counter" class="font-mono text-xs">—</span>
+              <button id="progress-cancel"
+                class="bauhaus-press border-2 border-ink bg-white text-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest hover:bg-yellow">
+                Cancel
+              </button>
+            </div>
+            <div class="h-2 bg-bg">
+              <div id="progress-fill" class="h-full bg-red transition-all" style="width: 0%"></div>
+            </div>
+            <div class="px-3 py-2 grid grid-cols-3 gap-2 text-center">
+              <div class="text-[10px] font-bold uppercase tracking-widest"><span class="text-ink/60">tokens in:</span> <span id="progress-tokens-in" class="font-mono">0</span></div>
+              <div class="text-[10px] font-bold uppercase tracking-widest"><span class="text-ink/60">tokens out:</span> <span id="progress-tokens-out" class="font-mono">0</span></div>
+              <div class="text-[10px] font-bold uppercase tracking-widest"><span class="text-ink/60">changes:</span> <span id="progress-changes" class="font-mono">0</span></div>
+            </div>
+          </div>
+
           <div id="status" class="mt-4 hidden border-2 border-ink p-3 text-sm font-bold"></div>
         </div>
       </section>
@@ -523,9 +543,10 @@
       projects: [],
       selectedProjectSlug: null,
       projectDetail: null,
-      outputView: 'edit',           // 'edit' | 'diff'
+      outputView: 'edit',
       saveTimer: null,
       lastSaved: '',
+      runAbort: null,                // AbortController for the active run
     };
 
     const TEXT_FORMATS = new Set(['txt', 'md', 'srt', 'vtt', 'json']);
@@ -698,6 +719,17 @@
       btn.innerHTML = on ? '<span class="inline-block animate-pulse">⏳ Running…</span>' : '▶  Clean transcript';
     }
 
+    function showProgress() {
+      $('progress-panel').classList.remove('hidden');
+      $('progress-fill').style.width = '0%';
+      $('progress-label').textContent = 'Starting…';
+      $('progress-counter').textContent = '—';
+      $('progress-tokens-in').textContent = '0';
+      $('progress-tokens-out').textContent = '0';
+      $('progress-changes').textContent = '0';
+    }
+    function hideProgress() { $('progress-panel').classList.add('hidden'); }
+
     async function runPipeline() {
       const usingBinaryUpload = state.pendingFile && BINARY_FORMATS.has(state.pendingFormat);
       const transcript = $('transcript-input').value.trim();
@@ -705,42 +737,183 @@
       if (!state.selectedProvider) { setStatus('Pick a provider with an API key set.', 'warn'); return; }
 
       hideStatus(); setRunning(true);
-      $('output-preview').textContent = 'Working… (this can take 10–60 seconds)';
-      $('output-preview').classList.add('text-ink/40');
+      $('output-textarea').value = '';
+      $('output-textarea').classList.add('text-ink/40');
+      $('output-textarea').disabled = true;
       $('suggestions-panel').classList.add('hidden');
 
+      // Binary uploads use the existing non-streaming path (.docx file).
+      if (usingBinaryUpload) {
+        return runBinaryUpload();
+      }
+
+      // Text path: use SSE for live progress.
+      showProgress();
       const t0 = performance.now();
+      const abort = new AbortController();
+      state.runAbort = abort;
+
+      let accumulatedChanges = 0;
+      let totalTokensIn = 0;
+      let totalTokensOut = 0;
+      let numChunks = 1;
+      let finalPayload = null;
+      let savedSlug = null;
+
       try {
-        let res;
-        if (usingBinaryUpload) {
-          const fd = new FormData();
-          fd.append('file', state.pendingFile);
-          if (state.selectedProvider) fd.append('provider', state.selectedProvider);
-          const m = $('model-input').value.trim();
-          if (m) fd.append('model', m);
-          const t = $('title-input').value.trim();
-          if (t) fd.append('title', t);
-          const b = $('briefing-input').value.trim();
-          if (b) fd.append('briefing', b);
-          res = await fetch('/api/run-file', { method: 'POST', body: fd });
-        } else {
-          res = await fetch('/api/run', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              transcript,
-              format: state.pendingFormat || 'txt',
-              provider: state.selectedProvider,
-              model: $('model-input').value.trim() || null,
-              title: $('title-input').value.trim() || null,
-              briefing: $('briefing-input').value.trim() || null,
-            }),
-          });
+        const res = await fetch('/api/run-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript,
+            format: state.pendingFormat || 'txt',
+            provider: state.selectedProvider,
+            model: $('model-input').value.trim() || null,
+            title: $('title-input').value.trim() || null,
+            briefing: $('briefing-input').value.trim() || null,
+          }),
+          signal: abort.signal,
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          setStatus('Failed: ' + (err.detail || res.statusText), 'error');
+          hideProgress();
+          return;
         }
+
+        // Parse SSE manually (EventSource doesn't support POST)
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // Events are separated by blank lines
+          let sep;
+          while ((sep = buffer.indexOf('\n\n')) !== -1) {
+            const block = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            const event = parseSSEBlock(block);
+            if (!event) continue;
+            switch (event.name) {
+              case 'plan': {
+                numChunks = event.data.num_chunks || 1;
+                $('progress-label').textContent = numChunks > 1
+                  ? `Running ${numChunks} chunks…`
+                  : 'Running…';
+                $('progress-counter').textContent = numChunks > 1 ? `0 / ${numChunks}` : '~';
+                break;
+              }
+              case 'chunk_start': {
+                $('progress-label').textContent = `Chunk ${event.data.chunk} of ${event.data.total} — calling model…`;
+                $('progress-counter').textContent = `${event.data.chunk} / ${event.data.total}`;
+                break;
+              }
+              case 'chunk_done': {
+                const pct = event.data.total > 0 ? (event.data.chunk / event.data.total) * 100 : 0;
+                $('progress-fill').style.width = pct + '%';
+                accumulatedChanges = event.data.changes_so_far || 0;
+                totalTokensIn = event.data.input_tokens_so_far || 0;
+                totalTokensOut = event.data.output_tokens_so_far || 0;
+                $('progress-tokens-in').textContent = totalTokensIn.toLocaleString();
+                $('progress-tokens-out').textContent = totalTokensOut.toLocaleString();
+                $('progress-changes').textContent = accumulatedChanges.toLocaleString();
+                break;
+              }
+              case 'complete': {
+                finalPayload = event.data;
+                $('progress-fill').style.width = '100%';
+                $('progress-label').textContent = 'Done — saving…';
+                break;
+              }
+              case 'saved': {
+                savedSlug = event.data.project_slug;
+                break;
+              }
+              case 'error': {
+                setStatus('Pipeline error: ' + (event.data.detail || 'unknown'), 'error');
+                hideProgress();
+                return;
+              }
+            }
+          }
+        }
+
+        if (!finalPayload) {
+          setStatus('Stream ended without completing.', 'error');
+          hideProgress();
+          return;
+        }
+
+        // Build a result shape compatible with the existing renderer
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+        const data = {
+          edited_markdown: finalPayload.edited_markdown,
+          change_log: finalPayload.change_log || [],
+          suggestions: finalPayload.suggestions || [],
+          input_tokens: finalPayload.input_tokens,
+          output_tokens: finalPayload.output_tokens,
+          model: finalPayload.model,
+          provider: finalPayload.provider,
+          num_chunks: finalPayload.num_chunks || 1,
+          project_slug: savedSlug,
+        };
+        state.lastResult = data;
+        renderResult(data, elapsed);
+        renderSuggestions(data.suggestions);
+        hideProgress();
+        const slugTag = savedSlug ? ` · saved as ${savedSlug}` : '';
+        setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${data.suggestions.length} library suggestions${slugTag}`, 'ok');
+        loadProjects();
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          setStatus('Cancelled.', 'warn');
+        } else {
+          setStatus('Network error: ' + e.message, 'error');
+        }
+        hideProgress();
+      } finally {
+        state.runAbort = null;
+        setRunning(false);
+      }
+    }
+
+    function parseSSEBlock(block) {
+      let name = 'message';
+      let dataLines = [];
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) name = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (!dataLines.length) return null;
+      try {
+        return { name, data: JSON.parse(dataLines.join('\n')) };
+      } catch (e) {
+        return { name, data: { _raw: dataLines.join('\n'), _parseError: e.message } };
+      }
+    }
+
+    async function runBinaryUpload() {
+      const t0 = performance.now();
+      $('progress-panel').classList.add('hidden');
+      const fd = new FormData();
+      fd.append('file', state.pendingFile);
+      if (state.selectedProvider) fd.append('provider', state.selectedProvider);
+      const m = $('model-input').value.trim();
+      if (m) fd.append('model', m);
+      const t = $('title-input').value.trim();
+      if (t) fd.append('title', t);
+      const b = $('briefing-input').value.trim();
+      if (b) fd.append('briefing', b);
+      try {
+        const res = await fetch('/api/run-file', { method: 'POST', body: fd });
         const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
           setStatus('Failed: ' + (err.detail || res.statusText), 'error');
-          $('output-preview').textContent = '';
           return;
         }
         const data = await res.json();
@@ -749,10 +922,18 @@
         renderSuggestions(data.suggestions || []);
         const slugTag = data.project_slug ? ` · saved as ${data.project_slug}` : '';
         setStatus(`Done in ${elapsed}s · ${data.input_tokens + data.output_tokens} tokens · ${data.change_log.length} changes · ${(data.suggestions || []).length} library suggestions${slugTag}`, 'ok');
-        // Update Projects tab badge so user sees the count tick up immediately.
         loadProjects();
-      } catch (e) { setStatus('Network error: ' + e.message, 'error'); }
-      finally { setRunning(false); }
+      } catch (e) {
+        setStatus('Network error: ' + e.message, 'error');
+      } finally {
+        setRunning(false);
+      }
+    }
+
+    function cancelRun() {
+      if (state.runAbort) {
+        state.runAbort.abort();
+      }
     }
     function renderResult(data, elapsed) {
       $('output-preview').textContent = data.edited_markdown;
@@ -1227,6 +1408,9 @@
       $('output-textarea').addEventListener('input', scheduleSave);
       $('view-edit-btn').addEventListener('click', () => setOutputView('edit'));
       $('view-diff-btn').addEventListener('click', () => setOutputView('diff'));
+
+      // Cancel running pipeline
+      $('progress-cancel').addEventListener('click', cancelRun);
 
       $('drop-zone').addEventListener('click', () => $('file-input').click());
       $('file-input').addEventListener('change', (e) => {

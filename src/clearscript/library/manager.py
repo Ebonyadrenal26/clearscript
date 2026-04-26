@@ -434,13 +434,9 @@ class Library:
                 params.append(value)
         if sets:
             params.append(speaker_id)
-            self._conn.execute(
-                f"UPDATE speakers SET {', '.join(sets)} WHERE id = ?", tuple(params)
-            )
+            self._conn.execute(f"UPDATE speakers SET {', '.join(sets)} WHERE id = ?", tuple(params))
         if aliases is not None:
-            self._conn.execute(
-                "DELETE FROM speaker_aliases WHERE speaker_id = ?", (speaker_id,)
-            )
+            self._conn.execute("DELETE FROM speaker_aliases WHERE speaker_id = ?", (speaker_id,))
             for alias in aliases:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO speaker_aliases (speaker_id, alias) VALUES (?, ?)",

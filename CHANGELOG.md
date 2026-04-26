@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-04-26
+
+### Added — streaming progress + cancel button
+
+The biggest UX wound was the 60-180s blind spinner on long runs. Closed.
+
+- **`POST /api/run-stream`** SSE endpoint emits five named events: `plan`, `chunk_start`, `chunk_done`, `complete`, `saved` (plus `error` on failure). Same input contract as `/api/run`; same project persistence.
+- **`Pipeline.iter_events()`** generator yields a `StreamEvent` per chunk transition. The synchronous `run_on_transcript()` is now a thin wrapper that consumes the events and returns the final `EditResult`. One source of truth for chunk orchestration.
+- **Web UI progress panel** appears during text-input runs: progress bar (filled by `chunk_done` events), live counters for `tokens in / tokens out / changes accumulated`, current label like "Chunk 3 of 8 — calling model…". Visible the whole way, not just at the end.
+- **Cancel button** in the progress header. Aborts the in-flight `fetch()` via AbortController; the server detects the disconnect and stops issuing more chunks.
+- Binary-file uploads (`.docx`) keep using the existing non-streaming `/api/run-file` endpoint.
+
+### Added — DeepSeek v4 model defaults
+
+DeepSeek shipped v4 in 2026; the old `deepseek-chat` / `deepseek-reasoner` aliases are gone from `/v1/models`.
+
+- Default DeepSeek model is now `deepseek-v4-pro`. Known list: `["deepseek-v4-pro", "deepseek-v4-flash"]`.
+- `core/cost.py` price table includes both v4 entries (best-known approximations — verify at the official pricing page).
+
+### Fixed
+
+- **Output truncation** when the model hits the response cap: default `max_tokens` raised from 8,192 → 16,384. SUGGESTIONS section was getting cut off with verbose models.
+- **Slug pollution** by mic-check pleasantries: `_slug_hint_from_input` now skips lines like "测一下麦", "听得见吗", "hello can you hear", "好的", and similarly low-information openings. Now prioritizes title → filename → briefing → first non-pleasantry transcript line. Project slugs no longer end up like `2026-04-26-…-测一下麦-听得见吗-听得见`.
+
+### Changed
+
+- `Pipeline._run_multi_chunk` removed. The streaming generator now drives both code paths.
+- Bumped to `0.0.8`.
+
+### Tests
+
+- Existing 97 tests pass against the refactored pipeline (the streaming generator is the new internal driver). Lint clean.
+
 ## [0.0.7] - 2026-04-26
 
 ### Added — trust + iteration

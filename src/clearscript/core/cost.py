@@ -57,6 +57,12 @@ _PRICING: dict[str, dict[str, tuple[float, float]]] = {
         "o1-mini": (3.00, 12.00),
     },
     "openai-compat": {
+        # DeepSeek v4 series — current as of 2026-04. Verify exact USD
+        # rates at https://api-docs.deepseek.com/quick_start/pricing —
+        # values below are best-known approximations.
+        "deepseek-v4-pro": (0.50, 2.00),
+        "deepseek-v4-flash": (0.15, 0.60),
+        # Legacy v3 (some users still pin to these via aliases)
         "deepseek-chat": (0.27, 1.10),
         "deepseek-reasoner": (0.55, 2.19),
         "moonshot-v1-128k": (8.40, 8.40),

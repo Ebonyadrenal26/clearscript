@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -48,6 +49,19 @@ from clearscript.providers import ChatMessage, LLMProvider
 
 if TYPE_CHECKING:
     from clearscript.library import Library
+
+
+@dataclass
+class StreamEvent:
+    """One event emitted by the streaming pipeline.
+
+    The frontend renders ``plan`` to size the progress bar, ``chunk_start``
+    / ``chunk_done`` to advance it (with running diff and token counters),
+    ``complete`` to render the final EditResult, and ``error`` for failures.
+    """
+
+    name: str
+    data: dict[str, object]
 
 
 @dataclass
@@ -85,7 +99,7 @@ class Pipeline:
     library: Library | None = None
     briefing_context: str = ""
     temperature: float = 0.0
-    max_tokens: int = 8192
+    max_tokens: int = 16384
     chunk_target_tokens: int = DEFAULT_TARGET_TOKENS
     chunk_trigger_tokens: int = DEFAULT_TRIGGER_TOKENS
     chunk_hard_max_tokens: int = DEFAULT_HARD_MAX_TOKENS
@@ -95,19 +109,139 @@ class Pipeline:
         return self.run_on_transcript(transcript)
 
     def run_on_transcript(self, transcript: NormalizedTranscript) -> EditResult:
-        plan = plan_chunks(
-            transcript,
-            target_tokens=self.chunk_target_tokens,
-            trigger_tokens=self.chunk_trigger_tokens,
-            hard_max_tokens=self.chunk_hard_max_tokens,
+        """Synchronous entry point. Returns the final EditResult.
+
+        Internally drives the same generator as ``iter_events`` but discards
+        intermediate events. Useful for CLI / scripting / tests.
+        """
+        final: EditResult | None = None
+        for event in self.iter_events(transcript):
+            if event.name == "complete":
+                final = event.data["result"]  # type: ignore[assignment]
+            elif event.name == "error":
+                raise RuntimeError(str(event.data.get("detail", "pipeline error")))
+        if final is None:
+            raise RuntimeError("pipeline ended without a complete event")
+        return final
+
+    def iter_events(self, transcript: NormalizedTranscript) -> Iterator[StreamEvent]:
+        """Yield events as the pipeline progresses chunk-by-chunk.
+
+        Event sequence:
+          plan         — once, with num_chunks and total tokens
+          chunk_start  — for each chunk
+          chunk_done   — for each chunk, with that chunk's edited markdown,
+                         change count, and token usage
+          complete     — once at the end, with the final stitched EditResult
+          error        — on failure (terminates the stream)
+        """
+        try:
+            plan = plan_chunks(
+                transcript,
+                target_tokens=self.chunk_target_tokens,
+                trigger_tokens=self.chunk_trigger_tokens,
+                hard_max_tokens=self.chunk_hard_max_tokens,
+            )
+        except Exception as exc:
+            yield StreamEvent("error", {"detail": f"chunk planning failed: {exc}"})
+            return
+
+        yield StreamEvent(
+            "plan",
+            {
+                "num_chunks": plan.num_chunks,
+                "total_input_tokens_estimate": plan.total_tokens,
+            },
         )
 
-        if plan.num_chunks == 1:
-            result = self._run_single_chunk(plan.chunks[0])
-            result.num_chunks = 1
-            return result
+        edited_parts: list[str] = []
+        all_changes: list[dict[str, object]] = []
+        all_suggestions: list[dict[str, object]] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        last_model = ""
+        last_provider = ""
 
-        return self._run_multi_chunk(plan.chunks)
+        for idx, chunk in enumerate(plan.chunks, start=1):
+            yield StreamEvent(
+                "chunk_start",
+                {
+                    "chunk": idx,
+                    "total": plan.num_chunks,
+                },
+            )
+            try:
+                chunk_result = self._run_single_chunk(chunk)
+            except Exception as exc:
+                yield StreamEvent(
+                    "error",
+                    {
+                        "detail": f"chunk {idx} failed: {exc}",
+                        "chunk": idx,
+                        "total": plan.num_chunks,
+                    },
+                )
+                return
+
+            # Tag each change with chunk index for downstream audit
+            for change in chunk_result.change_log:
+                if "chunk" not in change:
+                    change["chunk"] = idx
+                all_changes.append(change)
+            all_suggestions.extend(chunk_result.suggestions)
+            edited_parts.append(chunk_result.edited_markdown.strip())
+            total_input_tokens += chunk_result.input_tokens
+            total_output_tokens += chunk_result.output_tokens
+            last_model = chunk_result.model
+            last_provider = chunk_result.provider
+
+            yield StreamEvent(
+                "chunk_done",
+                {
+                    "chunk": idx,
+                    "total": plan.num_chunks,
+                    "edited_partial": chunk_result.edited_markdown,
+                    "changes_in_chunk": len(chunk_result.change_log),
+                    "changes_so_far": len(all_changes),
+                    "suggestions_so_far": len(all_suggestions),
+                    "input_tokens": chunk_result.input_tokens,
+                    "output_tokens": chunk_result.output_tokens,
+                    "input_tokens_so_far": total_input_tokens,
+                    "output_tokens_so_far": total_output_tokens,
+                },
+            )
+
+        stitched = "\n\n".join(p for p in edited_parts if p)
+        deduped_suggestions = _dedupe_suggestions(all_suggestions)
+
+        result = EditResult(
+            edited_markdown=stitched,
+            change_log=all_changes,
+            suggestions=deduped_suggestions,
+            raw_response="",
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            model=last_model,
+            provider=last_provider,
+            num_chunks=plan.num_chunks,
+        )
+
+        yield StreamEvent(
+            "complete",
+            {
+                "result": result,
+                # Also flatten the result so SSE consumers can access fields
+                # without unpacking the dataclass:
+                "edited_markdown": result.edited_markdown,
+                "change_log": result.change_log,
+                "suggestions": result.suggestions,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+                "model": result.model,
+                "provider": result.provider,
+                "num_chunks": result.num_chunks,
+            },
+        )
 
     def _run_single_chunk(self, chunk: NormalizedTranscript) -> EditResult:
         library_context = self._collect_library_context(chunk)
@@ -141,43 +275,9 @@ class Pipeline:
             provider=response.provider,
         )
 
-    def _run_multi_chunk(self, chunks: list[NormalizedTranscript]) -> EditResult:
-        edited_parts: list[str] = []
-        all_changes: list[dict[str, object]] = []
-        all_suggestions: list[dict[str, object]] = []
-        total_input_tokens = 0
-        total_output_tokens = 0
-        last_model = ""
-        last_provider = ""
-
-        for idx, chunk in enumerate(chunks, start=1):
-            chunk_result = self._run_single_chunk(chunk)
-            # Tag each change with the chunk it came from for downstream auditing.
-            for change in chunk_result.change_log:
-                if "chunk" not in change:
-                    change["chunk"] = idx
-                all_changes.append(change)
-            all_suggestions.extend(chunk_result.suggestions)
-            edited_parts.append(chunk_result.edited_markdown.strip())
-            total_input_tokens += chunk_result.input_tokens
-            total_output_tokens += chunk_result.output_tokens
-            last_model = chunk_result.model
-            last_provider = chunk_result.provider
-
-        stitched = "\n\n".join(p for p in edited_parts if p)
-        deduped_suggestions = _dedupe_suggestions(all_suggestions)
-
-        return EditResult(
-            edited_markdown=stitched,
-            change_log=all_changes,
-            suggestions=deduped_suggestions,
-            raw_response="",  # multi-chunk: meaningless to keep one raw
-            input_tokens=total_input_tokens,
-            output_tokens=total_output_tokens,
-            model=last_model,
-            provider=last_provider,
-            num_chunks=len(chunks),
-        )
+    # Note: the legacy ``_run_multi_chunk`` is now subsumed by ``iter_events``.
+    # ``run_on_transcript`` consumes the event stream and returns the final
+    # EditResult — see ``iter_events`` above.
 
     def _build_user_prompt(self, transcript: NormalizedTranscript) -> str:
         return (
