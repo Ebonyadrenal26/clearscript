@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-04-26
+
+### Added — trust + iteration
+
+- **Inline-editable cleaned output** in the Editor view: editable textarea, debounced auto-save (~700ms), with "saved / saving… / save failed / offline" status indicator.
+- **Diff view** toggle (Edit / Diff). Each change_log entry's `new` value gets highlighted in Bauhaus colors layered by edit type:
+  - L1 speaker = light blue · L3 ASR fix = light red · L3.5 sentence = orange · L5 format = blue-grey · L6 punct = light yellow
+  - Hover any highlight to see the change reason and the chunk index it came from.
+- **Cost preview** updates live above the Run button as you type / change provider. Curated price table covers anthropic (Opus / Sonnet / Haiku 4.x), openai (gpt-4o, o1), openai-compat (DeepSeek, Moonshot, Qwen, Kimi), Google (Gemini), Ollama (always free).
+- **Project detail editable**: same auto-save pattern in the Cleaned sub-tab of an opened past project.
+- New endpoints: `POST /api/estimate-cost`, `PATCH /api/projects/{slug}/transcript` (invalidates any cached .docx so the next download regenerates from the edited markdown).
+- All download / copy buttons (.md / .docx / clipboard) now use the **current textarea content**, not the stale original LLM output.
+
+### Tests
+
+- 12 new tests across `test_cost.py` (price table coverage, CJK token estimation, Ollama free path, unknown-model fallback) and `test_project_update.py` (PATCH success, 404 path, docx cache invalidation, cost endpoint round-trip).
+- Total: 97 tests, all passing. Lint clean.
+
+### Changed
+
+- The v0.0.6 chunks-stat card that the ruff format pass had silently dropped is restored. The stat grid is now correctly 5 columns: In / Out / Changes / Chunks / Latency.
+- Bumped to `0.0.7`.
+
 ## [0.0.6] - 2026-04-26
 
 ### Added — long transcripts no longer crash
