@@ -303,11 +303,17 @@ def projects_show(
     console.print(f"[bold]Title:[/bold]   {detail.get('title') or '—'}")
     console.print(f"[bold]Created:[/bold] {detail.get('created_at') or '—'}")
     console.print(f"[bold]Provider:[/bold] {detail.get('provider')} · model: {detail.get('model')}")
-    console.print(f"[bold]Tokens:[/bold]  {detail.get('total_tokens')} (in={detail.get('input_tokens')} out={detail.get('output_tokens')})")
+    console.print(
+        f"[bold]Tokens:[/bold]  {detail.get('total_tokens')} (in={detail.get('input_tokens')} out={detail.get('output_tokens')})"
+    )
     console.print(f"[bold]Changes:[/bold] {len(detail.get('change_log') or [])}")
     console.print(f"[bold]Suggestions:[/bold] {len(detail.get('suggestions') or [])}")
     console.print()
-    console.print("[bold]Cleaned transcript[/bold] [dim]({} chars)[/dim]:".format(len(detail.get("cleaned_markdown") or "")))
+    console.print(
+        "[bold]Cleaned transcript[/bold] [dim]({} chars)[/dim]:".format(
+            len(detail.get("cleaned_markdown") or "")
+        )
+    )
     console.print(detail.get("cleaned_markdown") or "(empty)")
 
 

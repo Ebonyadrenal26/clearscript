@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-04-26
+
+### Added — long transcripts no longer crash
+
+- **Auto-chunking** for long transcripts. ``Pipeline.run_on_transcript`` analyzes input size and, if it exceeds 6000 estimated tokens, splits it into ~3500-token chunks at speaker-turn boundaries. Each chunk runs through the same prompts; outputs are stitched back together.
+- New module: ``src/clearscript/core/chunking.py`` with ``plan_chunks()``, ``estimate_tokens()``, configurable thresholds. Token estimation handles ASCII (chars/4) and CJK (chars/1.5) accurately enough for routing decisions.
+- Boundary preference: speaker turn → sentence boundary (`.?。!?！？`) → hard char cut. Oversized single segments (e.g., a 30-minute monologue) are split internally on sentence boundaries.
+- **Stitching logic**: edited markdown concatenated with ``\n\n``; change logs accumulated across chunks (each entry tagged with its ``chunk`` index for audit); suggestions deduped by ``(kind, canonical|canonical_name|title)`` so repeated proposals across chunks collapse.
+- **Web UI**: stat panel adds a blue "Chunks" card next to In / Out / Changes / Latency. Status line on multi-chunk runs shows ``… · N chunks · ...``.
+- **EditResult.num_chunks** and **RunResponse.num_chunks** so downstream consumers (UI, projects) can audit the path.
+- Per-chunk change-log entries get a ``chunk`` field so the change log reads as: chunk 1 → 5 changes, chunk 2 → 8 changes, etc.
+
+### Configurable
+
+```python
+Pipeline(
+    provider=p, model=m,
+    chunk_target_tokens=3500,    # aim per chunk
+    chunk_trigger_tokens=6000,   # don't chunk below this
+    chunk_hard_max_tokens=5000,  # split a single segment if it exceeds this
+)
+```
+
+Defaults are tuned so ~30-minute interviews stay single-shot, 60+ minute ones split.
+
+### Tests
+
+- 11 new tests across `test_chunking.py` (token estimation, boundary preference, oversized-segment internal split, empty input, metadata preservation) and `test_pipeline_chunked.py` (multi-chunk path, single-chunk path, suggestion dedup, token-count summing).
+- Total: 85 tests, all passing. Lint clean.
+
+### Deferred to v0.0.7
+
+- **Mode C cross-chunk learning**: chunk N's user-confirmed corrections feeding into chunk N+1's prompt. Requires multi-stage pipeline with batch-ask. Tracked.
+- **Streaming progress (SSE)**: real-time "chunk 3/12 done" updates instead of waiting for the full multi-chunk run. Tracked.
+
 ## [0.0.5] - 2026-04-25
 
 ### Added — every Run is now a project

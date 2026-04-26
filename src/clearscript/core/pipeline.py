@@ -1,6 +1,7 @@
-"""Minimum-viable pipeline (v0.0.3).
+"""Minimum-viable pipeline (v0.0.6).
 
-Single-pass: ingest → compose prompts → call LLM once → parse output → write.
+Single-pass: ingest → compose prompts → call LLM (chunk-by-chunk if long) →
+parse output → stitch.
 
 Library integration:
 - Mode A (project-start activation): briefing text is scanned for entity hints
@@ -11,7 +12,18 @@ Library integration:
   block alongside the change log; pipeline parses it and exposes via
   ``EditResult.suggestions`` so the UI can ask the user to accept them.
 - Mode C (in-flight learning): not in v0.0.x — needs the multi-stage pipeline
-  with batch-ask. Tracked for v0.0.6.
+  with batch-ask. Tracked for v0.0.7+.
+
+Chunking (v0.0.6):
+- ``Pipeline.run_on_transcript`` analyzes the input and, if it would exceed
+  ``trigger_tokens`` (default 6000), splits it at speaker-turn boundaries
+  into chunks of ``~target_tokens`` (default 3500) and processes each
+  through the same prompts. Outputs are stitched: edited markdown is
+  concatenated, change logs are merged, suggestions are deduped by kind
+  and canonical.
+- Each chunk receives the same library context (briefing-derived seeds +
+  recurring-speaker mappings). Cross-chunk learning (where chunk N's
+  confirmations feed chunk N+1's prompt) is deferred to v0.0.7's Mode C.
 
 The full multi-stage pipeline contract lives in ``docs/architecture.md``.
 """
@@ -24,6 +36,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from clearscript.core.chunking import (
+    DEFAULT_HARD_MAX_TOKENS,
+    DEFAULT_TARGET_TOKENS,
+    DEFAULT_TRIGGER_TOKENS,
+    plan_chunks,
+)
 from clearscript.ingest import NormalizedTranscript, parse
 from clearscript.prompts import compose_edit_prompt
 from clearscript.providers import ChatMessage, LLMProvider
@@ -42,6 +60,7 @@ class EditResult:
     output_tokens: int = 0
     model: str = ""
     provider: str = ""
+    num_chunks: int = 1
 
     @property
     def total_tokens(self) -> int:
@@ -52,12 +71,10 @@ CHANGELOG_DELIMITER = "---CHANGELOG---"
 SUGGESTIONS_DELIMITER = "---SUGGESTIONS---"
 
 # Heuristic: extract candidate entities from briefing text.
-# Captures CamelCase tokens, ALL-CAPS acronyms, mixed letter+digit identifiers,
-# and CJK names of plausible length.
 _ENTITY_PATTERN = re.compile(
-    r"[A-Z][a-zA-Z0-9]{2,}(?:[A-Z][a-zA-Z0-9]+)*"  # CamelCase: Dify, PingCAP
-    r"|[A-Z]{2,}(?:-?\d+)?"  # ACRONYM: PMF, MAM-9
-    r"|[一-鿿]{2,4}"  # CJK 2-4 char names: 张三, 君晨
+    r"[A-Z][a-zA-Z0-9]{2,}(?:[A-Z][a-zA-Z0-9]+)*"
+    r"|[A-Z]{2,}(?:-?\d+)?"
+    r"|[一-鿿]{2,4}"
 )
 
 
@@ -69,23 +86,39 @@ class Pipeline:
     briefing_context: str = ""
     temperature: float = 0.0
     max_tokens: int = 8192
+    chunk_target_tokens: int = DEFAULT_TARGET_TOKENS
+    chunk_trigger_tokens: int = DEFAULT_TRIGGER_TOKENS
+    chunk_hard_max_tokens: int = DEFAULT_HARD_MAX_TOKENS
 
     def run(self, input_path: Path) -> EditResult:
         transcript = parse(input_path)
         return self.run_on_transcript(transcript)
 
     def run_on_transcript(self, transcript: NormalizedTranscript) -> EditResult:
-        library_context = self._collect_library_context(transcript)
+        plan = plan_chunks(
+            transcript,
+            target_tokens=self.chunk_target_tokens,
+            trigger_tokens=self.chunk_trigger_tokens,
+            hard_max_tokens=self.chunk_hard_max_tokens,
+        )
+
+        if plan.num_chunks == 1:
+            result = self._run_single_chunk(plan.chunks[0])
+            result.num_chunks = 1
+            return result
+
+        return self._run_multi_chunk(plan.chunks)
+
+    def _run_single_chunk(self, chunk: NormalizedTranscript) -> EditResult:
+        library_context = self._collect_library_context(chunk)
         system_prompt = compose_edit_prompt(
             briefing_context=self.briefing_context,
             library_context=library_context,
         )
 
-        user_prompt = self._build_user_prompt(transcript)
-
         messages = [
             ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_prompt),
+            ChatMessage(role="user", content=self._build_user_prompt(chunk)),
         ]
 
         response = self.provider.chat(
@@ -108,6 +141,44 @@ class Pipeline:
             provider=response.provider,
         )
 
+    def _run_multi_chunk(self, chunks: list[NormalizedTranscript]) -> EditResult:
+        edited_parts: list[str] = []
+        all_changes: list[dict[str, object]] = []
+        all_suggestions: list[dict[str, object]] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        last_model = ""
+        last_provider = ""
+
+        for idx, chunk in enumerate(chunks, start=1):
+            chunk_result = self._run_single_chunk(chunk)
+            # Tag each change with the chunk it came from for downstream auditing.
+            for change in chunk_result.change_log:
+                if "chunk" not in change:
+                    change["chunk"] = idx
+                all_changes.append(change)
+            all_suggestions.extend(chunk_result.suggestions)
+            edited_parts.append(chunk_result.edited_markdown.strip())
+            total_input_tokens += chunk_result.input_tokens
+            total_output_tokens += chunk_result.output_tokens
+            last_model = chunk_result.model
+            last_provider = chunk_result.provider
+
+        stitched = "\n\n".join(p for p in edited_parts if p)
+        deduped_suggestions = _dedupe_suggestions(all_suggestions)
+
+        return EditResult(
+            edited_markdown=stitched,
+            change_log=all_changes,
+            suggestions=deduped_suggestions,
+            raw_response="",  # multi-chunk: meaningless to keep one raw
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            model=last_model,
+            provider=last_provider,
+            num_chunks=len(chunks),
+        )
+
     def _build_user_prompt(self, transcript: NormalizedTranscript) -> str:
         return (
             "Apply the layered edit pipeline (L1 through L6, including L3.5) to the transcript "
@@ -127,7 +198,6 @@ class Pipeline:
 
         sections: list[str] = []
 
-        # 1) Speakers detected in the raw transcript → library lookup
         speaker_lines: list[str] = []
         for spk in transcript.detected_speakers:
             hit = self.library.lookup_speaker(spk)
@@ -139,7 +209,6 @@ class Pipeline:
         if speaker_lines:
             sections.append("Known speakers (from your library):\n" + "\n".join(speaker_lines))
 
-        # 2) Entities from briefing → library lookup + alias hints
         if self.briefing_context:
             seen_canonicals: set[str] = set()
             term_lines: list[str] = []
@@ -180,7 +249,6 @@ class Pipeline:
             token = match.group(0).strip()
             if len(token) < 2 or token in seen:
                 continue
-            # Filter very common English words masquerading as proper nouns.
             if token.lower() in {"the", "and", "for", "with", "from", "into", "this", "that"}:
                 continue
             seen.add(token)
@@ -229,3 +297,18 @@ class Pipeline:
         if isinstance(parsed, list):
             return [item for item in parsed if isinstance(item, dict)]
         return []
+
+
+def _dedupe_suggestions(items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Merge duplicate suggestions across chunks by kind + canonical/title."""
+    seen_keys: set[tuple[str, str]] = set()
+    out: list[dict[str, object]] = []
+    for item in items:
+        kind = str(item.get("kind", "")).lower()
+        identity = item.get("canonical") or item.get("canonical_name") or item.get("title") or ""
+        key = (kind, str(identity).lower())
+        if not identity or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        out.append(item)
+    return out

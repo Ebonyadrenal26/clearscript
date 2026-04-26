@@ -83,6 +83,7 @@ class RunResponse(BaseModel):
     output_tokens: int
     model: str
     provider: str
+    num_chunks: int = 1  # > 1 when the transcript was auto-chunked
     project_slug: str | None = None  # set when the run was persisted to disk
 
 
@@ -266,6 +267,7 @@ def create_app() -> FastAPI:
             output_tokens=result.output_tokens,
             model=result.model,
             provider=result.provider,
+            num_chunks=result.num_chunks,
             project_slug=project_slug,
         )
 

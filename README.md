@@ -124,7 +124,7 @@ uv run clearscript run input.txt --provider ollama --model qwen2.5:14b
 
 ## Status
 
-> **v0.0.5 — pre-alpha.** Local web UI ships a Bauhaus-styled Editor + Library + **Projects** tabs; multi-format ingest (`.txt / .md / .docx / .srt / .vtt / .json`); compounding terminology library with Mode A activation and Mode B harvest; every Run auto-saves as a project to `~/Documents/clearscript/projects/`. Full v0.1 plan: see [ROADMAP](./docs/ROADMAP.md).
+> **v0.0.6 — pre-alpha.** Local web UI ships a Bauhaus-styled Editor + Library + Projects tabs; multi-format ingest (`.txt / .md / .docx / .srt / .vtt / .json`); compounding terminology library with Mode A activation and Mode B harvest; every Run auto-saves as a project to `~/Documents/clearscript/projects/`; **long transcripts (60+ min) are auto-chunked** at speaker boundaries and stitched back together. Full v0.1 plan: see [ROADMAP](./docs/ROADMAP.md).
 
 ### Supported input formats today
 
