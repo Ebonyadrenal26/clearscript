@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-04-26
+
+### Three concrete user complaints, three concrete fixes
+
+User reported running v0.0.8 with their first real transcript:
+
+> 1. 我看不到正在跑的进程
+> 2. 公司名（DeFi、Tabby、OpenCloud 等）应该自动识别
+> 3. Output 实际消耗的 token 比预估多。实际花了多少钱要告诉我
+
+### Added — Token-level live streaming
+
+The chunk progress in v0.0.8 only showed "calling model…" with frozen 0 counters until the chunk completed. Now LLM output streams in word-by-word as it's generated.
+
+- New ``Provider.chat_with_progress()`` yielding ``('delta', text)`` for each token chunk plus a final ``('done', ChatResponse)`` carrying real usage.
+- ``AnthropicProvider`` and ``OpenAICompatProvider`` (DeepSeek/Moonshot/Qwen/etc.) implement this with **real** input/output token counts captured from streaming usage. ``OpenAICompatProvider`` sets ``stream_options={"include_usage": True}`` so DeepSeek emits a final usage chunk. Other adapters fall back to the base class's char-count estimation.
+- ``Pipeline.iter_events`` now emits ``chunk_delta`` events alongside ``chunk_start`` / ``chunk_done``. The SSE endpoint forwards them.
+- Web UI Editor: when a delta arrives, append it to the output textarea live (textarea is now active during streaming, not pre-disabled). Auto-scroll to follow the stream. The progress label flips to "receiving…" mid-stream.
+
+### Added — Universal seed pack
+
+A curated set of common ASR errors ships with clearscript and auto-loads on first use, so the model catches well-known mishears without any prior training:
+
+- 17 terms covering AI/infra companies (Dify ← DeFi/底牌/Difan, Manus ← Minus, Tavily ← Tabby, OpenClaw ← OpenCloud, Mem0 ← MAM-9/Mem9, Nebius, PingCAP ← PinkCup, Exa ← Alexa, Brave ← Braun, Anthropic ← iShopee), tech terms (JavaScript ← Dust Script, web search ← WebSphere, E-E-A-T ← EAT), and management vocabulary (skip level ← scalable, PMF, GEO, SLG)
+- 3 negative-list rules (preserve "蛮好的" / "做事情" / approximate-number phrasing)
+- Loaded by ``install_seed_pack(library, only_if_empty=True)`` — won't overwrite a user's existing data on subsequent boots
+- Module: ``src/clearscript/library/seed_pack.py``
+- Server installs on first ``open_library()`` call per process
+
+### Added — Actual cost reporting
+
+Pre-run estimate kept lying about output token counts. Now both shown:
+
+- New ``actual_cost(provider_type, model, input_tokens, output_tokens)`` in ``core/cost.py``
+- After a streaming run, the SSE ``saved`` event carries the actual cost dict computed from real token usage
+- Status line now shows ``Done in 28s · 8,400 tokens · 11 changes · 4 suggestions · cost: $0.0123 actual · saved as 2026-04-26-…``
+- The actual cost is also persisted to the project's ``meta.json`` so the Projects tab can show it later
+- Pre-run estimate's ``output_ratio`` bumped from 1.0 → 1.5 (better matches real verbose-model output)
+
+### Tightened — L3 ASR prompt
+
+Added a "Be proactive about company / product names" section to ``layers/l3_asr_fix.md``: explicit instruction to actively flag CamelCase / weirdly-spelled / context-misfit tokens, propose fixes for ≥75% confidence cases, add to SUGGESTIONS for <75%. Reasoning: missed real ASR errors cost more than wrong proposals the user can reject.
+
+### Tests
+
+- 97 still passing (MockProvider + RotatingMockProvider + DupSuggestProvider extended with ``chat_with_progress``).
+
+### Changed
+
+- Default ``Pipeline.max_tokens``: 16,384 (unchanged from v0.0.8 — was a v0.0.8 fix)
+- Bumped to ``0.0.9``
+
 ## [0.0.8] - 2026-04-26
 
 ### Added — streaming progress + cancel button

@@ -78,9 +78,11 @@ _PRICING: dict[str, dict[str, tuple[float, float]]] = {
     "ollama": {},  # local — always free
 }
 
-# Heuristic: cleaned output is typically ~95% of input length (some trim, some
-# expansion from formatting). Use 1.0 as a conservative upper bound for cost.
-_OUTPUT_RATIO = 1.0
+# Heuristic: with verbose models the cleaned output (markdown + JSON change
+# log + JSON suggestions) typically runs 1.3–1.8x the input. 1.5 is the
+# sweet spot — slightly conservative on the cost side. Real cost shown
+# after the run reveals the truth.
+_OUTPUT_RATIO = 1.5
 
 
 def estimate_cost(
@@ -141,3 +143,53 @@ def estimate_cost(
 def list_known_models() -> dict[str, list[str]]:
     """Return every provider→models pair the price table knows about."""
     return {ptype: sorted(models.keys()) for ptype, models in _PRICING.items() if models}
+
+
+def actual_cost(
+    *,
+    provider_type: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+) -> CostEstimate:
+    """Compute actual cost from real (post-run) token usage.
+
+    Returns a ``CostEstimate`` shaped the same as ``estimate_cost`` so the
+    UI can format both the same way; ``output_tokens_estimate`` here is
+    actually the **real** output token count.
+    """
+    provider_table = _PRICING.get(provider_type.lower(), {})
+    pricing = provider_table.get(model)
+
+    if pricing is None and provider_type.lower() == "ollama":
+        return CostEstimate(
+            input_tokens=input_tokens,
+            output_tokens_estimate=output_tokens,
+            input_cost_usd=0.0,
+            output_cost_usd=0.0,
+            total_cost_usd=0.0,
+            pricing_known=True,
+            note="Ollama runs locally — no API cost.",
+        )
+    if pricing is None:
+        return CostEstimate(
+            input_tokens=input_tokens,
+            output_tokens_estimate=output_tokens,
+            input_cost_usd=0.0,
+            output_cost_usd=0.0,
+            total_cost_usd=0.0,
+            pricing_known=False,
+            note=f"No pricing data for {provider_type}/{model}.",
+        )
+    in_rate, out_rate = pricing
+    in_cost = (input_tokens / 1_000_000) * in_rate
+    out_cost = (output_tokens / 1_000_000) * out_rate
+    return CostEstimate(
+        input_tokens=input_tokens,
+        output_tokens_estimate=output_tokens,
+        input_cost_usd=in_cost,
+        output_cost_usd=out_cost,
+        total_cost_usd=in_cost + out_cost,
+        pricing_known=True,
+        note="",
+    )

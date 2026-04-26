@@ -68,3 +68,42 @@ class AnthropicProvider(_BaseProvider):
             temperature=temperature,
         ) as stream:
             yield from stream.text_stream
+
+    def chat_with_progress(
+        self, messages: list[ChatMessage], model: str, **kwargs: object
+    ) -> Iterator[tuple[str, object]]:
+        """Stream deltas, then emit a final ('done', ChatResponse) with real Anthropic usage info."""
+        system_parts = [m.content for m in messages if m.role == "system"]
+        anthropic_messages = [
+            {"role": m.role, "content": m.content} for m in messages if m.role != "system"
+        ]
+        max_tokens = int(kwargs.get("max_tokens", 8192))  # type: ignore[arg-type]
+        temperature = float(kwargs.get("temperature", 0.0))  # type: ignore[arg-type]
+
+        accumulated = ""
+        start = time_ms()
+        with self._client.messages.stream(  # type: ignore[call-arg]
+            model=model,
+            system="\n\n".join(system_parts) if system_parts else None,  # type: ignore[arg-type]
+            messages=anthropic_messages,  # type: ignore[arg-type]
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ) as stream:
+            for chunk in stream.text_stream:
+                accumulated += chunk
+                yield ("delta", chunk)
+            final_message = stream.get_final_message()
+
+        latency = time_ms() - start
+        yield (
+            "done",
+            ChatResponse(
+                text=accumulated,
+                input_tokens=final_message.usage.input_tokens,
+                output_tokens=final_message.usage.output_tokens,
+                model=model,
+                provider=self.name,
+                latency_ms=latency,
+                raw=final_message,
+            ),
+        )

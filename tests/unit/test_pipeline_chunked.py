@@ -45,6 +45,24 @@ class RotatingMockProvider:
     def stream(self, messages, model, **kwargs):
         yield ""
 
+    def chat_with_progress(self, messages, model, **kwargs):
+        from clearscript.providers.base import ChatResponse
+
+        self.call_count += 1
+        text = CHUNK_OUTPUT_TEMPLATE.format(n=self.call_count)
+        yield ("delta", text)
+        yield (
+            "done",
+            ChatResponse(
+                text=text,
+                input_tokens=100,
+                output_tokens=80,
+                model=model,
+                provider=self.name,
+                latency_ms=1.0,
+            ),
+        )
+
 
 def _write_long_transcript(path: Path, num_turns: int = 200, chars_per_turn: int = 250) -> None:
     """Write a synthetic transcript long enough to trigger chunking."""
@@ -115,6 +133,28 @@ def test_suggestions_dedup_across_chunks(tmp_path: Path) -> None:
 
         def stream(self, messages, model, **kwargs):
             yield ""
+
+        def chat_with_progress(self, messages, model, **kwargs):
+            from clearscript.providers.base import ChatResponse
+
+            payload = (
+                "Speaker 1：\n- some body\n"
+                "---CHANGELOG---\n[]\n"
+                "---SUGGESTIONS---\n"
+                '[{"kind": "term", "canonical": "Dify", "aliases_seen": ["DeFi"]}]'
+            )
+            yield ("delta", payload)
+            yield (
+                "done",
+                ChatResponse(
+                    text=payload,
+                    input_tokens=50,
+                    output_tokens=30,
+                    model=model,
+                    provider=self.name,
+                    latency_ms=1.0,
+                ),
+            )
 
     input_path = tmp_path / "long.txt"
     _write_long_transcript(input_path)

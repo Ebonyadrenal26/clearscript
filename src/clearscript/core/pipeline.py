@@ -171,7 +171,49 @@ class Pipeline:
                 },
             )
             try:
-                chunk_result = self._run_single_chunk(chunk)
+                # Drive the chunk through the streaming provider API so the UI
+                # can show text appearing in real time. Each delta is forwarded
+                # as a chunk_delta SSE event; only the final 'done' carries the
+                # full ChatResponse with usage.
+                accumulated = ""
+                response = None
+                messages = self._build_messages(chunk)
+                for kind, payload in self.provider.chat_with_progress(
+                    messages,
+                    self.model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                ):
+                    if kind == "delta":
+                        accumulated += str(payload)
+                        yield StreamEvent(
+                            "chunk_delta",
+                            {
+                                "chunk": idx,
+                                "total": plan.num_chunks,
+                                "delta": payload,
+                                "chars_so_far": len(accumulated),
+                            },
+                        )
+                    elif kind == "done":
+                        response = payload  # ChatResponse
+                if response is None:
+                    yield StreamEvent(
+                        "error",
+                        {"detail": f"chunk {idx} stream ended without 'done' event"},
+                    )
+                    return
+                edited, changelog, suggestions = self._split_output(response.text)  # type: ignore[attr-defined]
+                chunk_result = EditResult(
+                    edited_markdown=edited,
+                    change_log=changelog,
+                    suggestions=suggestions,
+                    raw_response=response.text,  # type: ignore[attr-defined]
+                    input_tokens=response.input_tokens,  # type: ignore[attr-defined]
+                    output_tokens=response.output_tokens,  # type: ignore[attr-defined]
+                    model=response.model,  # type: ignore[attr-defined]
+                    provider=response.provider,  # type: ignore[attr-defined]
+                )
             except Exception as exc:
                 yield StreamEvent(
                     "error",
@@ -242,6 +284,18 @@ class Pipeline:
                 "num_chunks": result.num_chunks,
             },
         )
+
+    def _build_messages(self, chunk: NormalizedTranscript) -> list[ChatMessage]:
+        """Build the system + user message pair for one chunk's LLM call."""
+        library_context = self._collect_library_context(chunk)
+        system_prompt = compose_edit_prompt(
+            briefing_context=self.briefing_context,
+            library_context=library_context,
+        )
+        return [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=self._build_user_prompt(chunk)),
+        ]
 
     def _run_single_chunk(self, chunk: NormalizedTranscript) -> EditResult:
         library_context = self._collect_library_context(chunk)

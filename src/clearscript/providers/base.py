@@ -58,6 +58,36 @@ class _BaseProvider:
         response = self.chat(messages, model, **kwargs)  # type: ignore[attr-defined]
         yield response.text
 
+    def chat_with_progress(
+        self, messages: list[ChatMessage], model: str, **kwargs: object
+    ) -> Iterator[tuple[str, object]]:
+        """Default implementation: stream deltas, then emit a synthetic ('done', ChatResponse).
+
+        Subclasses that have access to streaming usage info should override
+        this to capture real input/output token counts from the underlying SDK.
+        For adapters that fall through to this default, output_tokens are
+        estimated from the response character count.
+        """
+        accumulated = ""
+        start = time_ms()
+        for delta in self.stream(messages, model, **kwargs):  # type: ignore[attr-defined]
+            accumulated += delta
+            yield ("delta", delta)
+        latency = time_ms() - start
+        # Estimate token counts when SDK didn't provide usage
+        from clearscript.core.chunking import estimate_tokens
+
+        input_text = "\n".join(m.content for m in messages)
+        response = ChatResponse(
+            text=accumulated,
+            input_tokens=estimate_tokens(input_text),
+            output_tokens=estimate_tokens(accumulated),
+            model=model,
+            provider=getattr(self, "name", "unknown"),
+            latency_ms=latency,
+        )
+        yield ("done", response)
+
 
 def time_ms() -> float:
     return time.perf_counter() * 1000.0

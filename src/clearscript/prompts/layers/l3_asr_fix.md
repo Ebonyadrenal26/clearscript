@@ -35,3 +35,16 @@ When the speaker mentions money, percentages, headcount, timelines, ARR, prices 
 ## When library and context disagree
 
 Library wins. The library represents user-confirmed knowledge. If your context inference contradicts the library, log a `needs_user_review` entry rather than override the library.
+
+## Be proactive about company / product names
+
+ASR tools mishear proper nouns *constantly*. Whenever you encounter:
+
+- A capitalized English word in a tech/business context that doesn't quite fit
+- A CamelCase or weirdly-spelled identifier (`DeFi`, `Minus`, `iShopee`, `OpenCloud`, `Tabby`, `Alexa`, `Dust Script`)
+- A short acronym whose expansion seems off for the domain
+- A mid-sentence English noun that breaks the topic flow
+
+**actively consider whether it's a misheard real entity** (company, product, person, technology) and propose a fix. Use your world knowledge of well-known names in the conversation's domain. If you have ≥75% confidence the speaker meant a different real entity, log the correction (with a confidence score). If <75% confidence, **add it to SUGGESTIONS** so the user can confirm — don't silently leave it.
+
+The cost of missing a real ASR error far outweighs the cost of proposing a wrong fix the user can reject. Be proactive, not conservative.

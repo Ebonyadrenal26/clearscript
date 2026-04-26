@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from clearscript import __version__
 from clearscript.config import Config, ensure_dirs, load_config
-from clearscript.core.cost import estimate_cost
+from clearscript.core.cost import actual_cost, estimate_cost
 from clearscript.core.pipeline import Pipeline
 from clearscript.export import write_docx
 from clearscript.ingest import parse as parse_path
@@ -32,7 +32,7 @@ from clearscript.ingest.md import MdAdapter
 from clearscript.ingest.srt import SrtAdapter
 from clearscript.ingest.txt import TxtAdapter
 from clearscript.ingest.vtt import VttAdapter
-from clearscript.library import Library
+from clearscript.library import Library, install_seed_pack
 from clearscript.providers import build_provider
 from clearscript.storage import ProjectStore
 
@@ -214,8 +214,21 @@ def create_app() -> FastAPI:
             cfg_holder["config"] = c
         return cfg_holder["config"]
 
+    seed_installed = {"done": False}
+
     def open_library() -> Library:
-        return Library(cfg().library_path)
+        lib = Library(cfg().library_path)
+        # On first server boot, install the universal seed pack so the model
+        # catches well-known ASR errors (DeFi → Dify, Tabby → Tavily, etc.)
+        # without the user having to teach them.
+        if not seed_installed["done"]:
+            # Idempotent: add_term + add_negative skip rows that already
+            # exist by canonical+scope, so calling on every boot is safe
+            # even when the user already has data.
+            with contextlib.suppress(Exception):
+                install_seed_pack(lib, only_if_empty=False)
+            seed_installed["done"] = True
+        return lib
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
@@ -420,7 +433,22 @@ def create_app() -> FastAPI:
 
             # Persist the project (same logic as the sync path).
             project_slug = None
+            cost_payload = None
             if final_result is not None:
+                # Compute actual cost from real token counts so the UI can
+                # show "$X.XX actual" instead of just the pre-run estimate.
+                try:
+                    p_cfg = cfg().get_provider(req.provider)
+                    cost = actual_cost(
+                        provider_type=p_cfg.type,
+                        model=final_result.model,
+                        input_tokens=final_result.input_tokens,
+                        output_tokens=final_result.output_tokens,
+                    )
+                    cost_payload = cost.as_dict()
+                except (KeyError, AttributeError):
+                    cost_payload = None
+
                 try:
                     duration = time.time() - t0
                     store = ProjectStore(cfg().projects_root)
@@ -445,11 +473,20 @@ def create_app() -> FastAPI:
                         output_tokens=final_result.output_tokens,
                         duration_sec=duration,
                     )
+                    # Augment meta with the actual cost so it shows up later
+                    # in the Projects tab / CLI without recomputation.
+                    if cost_payload:
+                        meta = project.read_meta()
+                        meta["actual_cost"] = cost_payload
+                        project.write_meta(meta)
                     project_slug = project.slug
                 except OSError:
                     project_slug = None
 
-            yield _sse_format("saved", {"project_slug": project_slug})
+            yield _sse_format(
+                "saved",
+                {"project_slug": project_slug, "actual_cost": cost_payload},
+            )
 
         return StreamingResponse(
             event_stream(),

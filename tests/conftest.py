@@ -30,6 +30,22 @@ class MockProvider:
     def stream(self, messages, model, **kwargs):  # type: ignore[no-untyped-def]
         yield self.response_text
 
+    def chat_with_progress(self, messages, model, **kwargs):  # type: ignore[no-untyped-def]
+        """Test stub: yield the canned response as a single delta, then a 'done' event."""
+        self.calls.append(list(messages))
+        yield ("delta", self.response_text)
+        yield (
+            "done",
+            ChatResponse(
+                text=self.response_text,
+                input_tokens=100,
+                output_tokens=50,
+                model=model,
+                provider=self.name,
+                latency_ms=1.0,
+            ),
+        )
+
 
 @pytest.fixture
 def mock_provider() -> MockProvider:
